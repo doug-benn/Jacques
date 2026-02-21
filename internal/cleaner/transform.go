@@ -8,6 +8,9 @@ import (
 )
 
 var createTableRE = regexp.MustCompile(`(?i)^CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:([a-zA-Z_][a-zA-Z_0-9]*)\.)?([a-zA-Z_][a-zA-Z_0-9]*)\s*\(`)
+var inheritsRE = regexp.MustCompile(`(?i)\s+INHERITS\s*\([^)]+\)`)
+var partitionByRE = regexp.MustCompile(`(?i)\s+PARTITION\s+BY\s+\w+\s*\([^)]+\)`)
+var partitionOfRE = regexp.MustCompile(`(?i)^CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:([a-zA-Z_][a-zA-Z_0-9]*)\.)?([a-zA-Z_][a-zA-Z_0-9]*)\s+PARTITION\s+OF\s+`)
 var colDefRE = regexp.MustCompile(`^\s*([a-zA-Z_][a-zA-Z_0-9]*)\s+(.+)$`)
 var nextvalRE = regexp.MustCompile(`nextval\('([^']+)'`)
 var onlyKeywordRE = regexp.MustCompile(`(?i)\bONLY\b\s*`)
@@ -17,6 +20,11 @@ var whitespaceRE = regexp.MustCompile(`\s+`)
 var transformNotNullRE = regexp.MustCompile(`(?i)\bNOT\s+NULL\b`)
 
 func ParseCreateTable(stmt string) (*model.TableDef, error) {
+	// Check if this is a PARTITION OF (child partition) - skip these
+	if partitionOfRE.MatchString(stmt) {
+		return nil, nil
+	}
+
 	m := createTableRE.FindStringSubmatch(stmt)
 	if m == nil {
 		return nil, nil
@@ -56,6 +64,16 @@ func ParseCreateTable(stmt string) (*model.TableDef, error) {
 		Schema:    schema,
 		Name:      name,
 		RawHeader: strings.TrimSpace(stmt[:startParen]),
+	}
+
+	// Capture INHERITS clause if present (comes after the closing parenthesis)
+	if inheritsMatch := inheritsRE.FindString(stmt[bodyEnd:]); inheritsMatch != "" {
+		td.Inherits = strings.TrimSpace(inheritsMatch)
+	}
+
+	// Capture PARTITION BY clause if present (comes after the closing parenthesis)
+	if partitionMatch := partitionByRE.FindString(stmt[bodyEnd:]); partitionMatch != "" {
+		td.PartitionBy = strings.TrimSpace(partitionMatch)
 	}
 
 	cols, constraints, err := parseTableBody(body)
@@ -252,7 +270,19 @@ func RenderTable(td *model.TableDef) string {
 		sb.WriteString("\n")
 	}
 
-	sb.WriteString(");")
+	sb.WriteString(")")
+
+	if td.Inherits != "" {
+		sb.WriteString(" ")
+		sb.WriteString(td.Inherits)
+	}
+
+	if td.PartitionBy != "" {
+		sb.WriteString(" ")
+		sb.WriteString(td.PartitionBy)
+	}
+
+	sb.WriteString(";")
 
 	return sb.String()
 }

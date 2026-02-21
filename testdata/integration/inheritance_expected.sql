@@ -8,17 +8,17 @@ CREATE TABLE public.users (
 CREATE TABLE public.administrators (
     role text NOT NULL DEFAULT 'admin',
     permissions text[] NOT NULL
-);
+) INHERITS (public.users);
 
 CREATE TABLE public.moderators (
     department text NOT NULL,
     badge_number text
-);
+) INHERITS (public.users);
 
 CREATE TABLE public.registered_users (
     email_verified boolean NOT NULL DEFAULT false,
     last_login timestamp without time zone
-);
+) INHERITS (public.users);
 
 CREATE TABLE public.user_sessions (
     id bigint PRIMARY KEY,

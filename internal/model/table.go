@@ -4,6 +4,9 @@ type TableDef struct {
 	Schema            string
 	Name              string
 	RawHeader         string
+	Inherits          string
+	PartitionBy       string
+	IsPartition       bool
 	Columns           []*ColumnDef
 	TableConstraints  []string
 	TableLevelPK      string

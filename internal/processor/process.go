@@ -101,6 +101,31 @@ func Process(sql string) string {
 		passThroughs = append(passThroughs, stmt)
 	}
 
+	// Infer missing CREATE SCHEMA statements
+	// Collect all schemas used by tables
+	tableSchemas := make(map[string]bool)
+	for _, td := range tables {
+		if td.Schema != "" && td.Schema != "public" {
+			tableSchemas[td.Schema] = true
+		}
+	}
+
+	// Extract schemas already defined in typeStmts
+	existingSchemas := make(map[string]bool)
+	schemaRE := regexp.MustCompile(`(?i)^CREATE\s+SCHEMA\s+(?:IF\s+NOT\s+EXISTS\s+)?([a-zA-Z_][a-zA-Z_0-9]*)`)
+	for _, stmt := range typeStmts {
+		if matches := schemaRE.FindStringSubmatch(stmt); matches != nil {
+			existingSchemas[strings.ToLower(matches[1])] = true
+		}
+	}
+
+	// Add inferred CREATE SCHEMA for missing schemas
+	for schema := range tableSchemas {
+		if !existingSchemas[strings.ToLower(schema)] {
+			typeStmts = append(typeStmts, "CREATE SCHEMA "+schema+";")
+		}
+	}
+
 	// Normalize sequence names (remove schema prefix) to properly detect shared sequences
 	normalizeSequenceName := func(name string) string {
 		// Handle both "global_id_seq" and "public.global_id_seq"

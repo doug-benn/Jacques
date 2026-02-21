@@ -368,7 +368,7 @@ func TestRobust_InheritancePassthrough(t *testing.T) {
 	assert.Contains(t, result, "CREATE TABLE public.moderators")
 	assert.Contains(t, result, "CREATE TABLE public.registered_users")
 
-	assert.NotContains(t, result, "INHERITS")
+	assert.Contains(t, result, "INHERITS (public.users)")
 }
 
 func TestRobust_ComplexSchemaFeatures(t *testing.T) {
