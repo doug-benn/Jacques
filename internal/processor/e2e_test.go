@@ -1,0 +1,426 @@
+//go:build !short
+
+package processor
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/joho/godotenv"
+	"github.com/stretchr/testify/require"
+	"github.com/testcontainers/testcontainers-go/modules/postgres"
+)
+
+const (
+	testDBUser   = "testuser"
+	testDBPass   = "testpass"
+	testDBName   = "testdb"
+	pgSchemaDiff = "pg-schema-diff"
+)
+
+var (
+	binaryName             string
+	container              *testContainer
+	currentPostgresVersion int
+)
+
+func init() {
+	// Try to load .env from project root (two levels up from internal/processor)
+	envPath := filepath.Join("..", "..", ".env")
+	_ = godotenv.Load(envPath)
+
+	if runtime.GOOS == "windows" {
+		binaryName = "jacques.exe"
+	} else {
+		binaryName = "jacques"
+	}
+}
+
+// getPostgresVersions returns the PostgreSQL versions to test from the POSTGRES_VERSIONS env var.
+// Format: "18,17,16" or just "18". Defaults to [18] if not set or invalid.
+func getPostgresVersions() []int {
+	envVal := os.Getenv("POSTGRES_VERSIONS")
+	if envVal == "" {
+		return []int{18}
+	}
+
+	var versions []int
+	for _, v := range strings.Split(envVal, ",") {
+		v = strings.TrimSpace(v)
+		if v == "" {
+			continue
+		}
+		var ver int
+		if _, err := fmt.Sscanf(v, "%d", &ver); err == nil {
+			versions = append(versions, ver)
+		}
+	}
+
+	if len(versions) == 0 {
+		return []int{18}
+	}
+	return versions
+}
+
+// testContainer wraps a PostgreSQL testcontainer with methods for pg_dump and connections.
+type testContainer struct {
+	container *postgres.PostgresContainer
+	pool      *pgxpool.Pool
+	connStr   string
+	ctx       context.Context
+}
+
+// TestMain handles one-time setup and teardown for all E2E tests.
+// It builds the binary and runs tests against all PostgreSQL versions specified in .env
+func TestMain(m *testing.M) {
+	// Build the binary before running tests
+	if err := buildBinary(); err != nil {
+		fmt.Printf("Failed to build binary: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Get all PostgreSQL versions to test
+	versions := getPostgresVersions()
+
+	fmt.Printf("Testing PostgreSQL versions: %v\n", versions)
+
+	// Run tests for each version
+	var failed bool
+	for i, pgVersion := range versions {
+		fmt.Printf("\n=== Running tests with PostgreSQL %d (%d/%d) ===\n", pgVersion, i+1, len(versions))
+
+		// Set the version for this iteration
+		currentPostgresVersion = pgVersion
+
+		// Start the PostgreSQL container for this version
+		var err error
+		container, err = setupContainer()
+		if err != nil {
+			fmt.Printf("Failed to start container (PostgreSQL %d): %v\n", pgVersion, err)
+			failed = true
+			continue
+		}
+
+		// Run tests
+		code := m.Run()
+
+		// Teardown
+		if container != nil {
+			container.close()
+		}
+
+		if code != 0 {
+			fmt.Printf("Tests failed for PostgreSQL %d\n", pgVersion)
+			failed = true
+		}
+	}
+
+	if failed {
+		os.Exit(1)
+	}
+	os.Exit(0)
+}
+
+// buildBinary builds the jacques binary from source.
+func buildBinary() error {
+	cmd := exec.Command("go", "build", "-o", binaryName, "./cmd/jacques")
+	cmd.Dir = filepath.Join("..", "..")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to build binary: %w\nOutput: %s", err, output)
+	}
+	return nil
+}
+
+// setupContainer starts a PostgreSQL testcontainer and waits for it to be ready.
+func setupContainer() (*testContainer, error) {
+	ctx := context.Background()
+
+	pgContainer, err := postgres.Run(ctx, fmt.Sprintf("postgres:%d", currentPostgresVersion),
+		postgres.WithDatabase(testDBName),
+		postgres.WithUsername(testDBUser),
+		postgres.WithPassword(testDBPass),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to start postgres container: %w", err)
+	}
+
+	connStr, err := pgContainer.ConnectionString(ctx, "sslmode=disable")
+	if err != nil {
+		_ = pgContainer.Terminate(ctx)
+		return nil, fmt.Errorf("failed to get connection string: %w", err)
+	}
+
+	// Wait for database to be ready
+	if err := waitForDatabase(ctx, connStr); err != nil {
+		_ = pgContainer.Terminate(ctx)
+		return nil, fmt.Errorf("database not ready: %w", err)
+	}
+
+	// Create a pool for the test container
+	pool, err := pgxpool.New(ctx, connStr)
+	if err != nil {
+		_ = pgContainer.Terminate(ctx)
+		return nil, fmt.Errorf("failed to create pool: %w", err)
+	}
+
+	return &testContainer{
+		container: pgContainer,
+		pool:      pool,
+		connStr:   connStr,
+		ctx:       ctx,
+	}, nil
+}
+
+// waitForDatabase polls the database until it's ready to accept connections.
+func waitForDatabase(ctx context.Context, connStr string) error {
+	maxRetries := 10
+	baseDelay := 500 * time.Millisecond
+
+	for i := 0; i < maxRetries; i++ {
+		pool, err := pgxpool.New(ctx, connStr)
+		if err == nil {
+			err = pool.Ping(ctx)
+			if err == nil {
+				pool.Close()
+				return nil
+			}
+			pool.Close()
+		}
+		delay := baseDelay * time.Duration(1<<i)
+		if delay > 5*time.Second {
+			delay = 5 * time.Second
+		}
+		time.Sleep(delay)
+	}
+	return fmt.Errorf("database not ready after %d attempts", maxRetries)
+}
+
+// close terminates the PostgreSQL container.
+func (tc *testContainer) close() {
+	if tc != nil {
+		if tc.pool != nil {
+			tc.pool.Close()
+		}
+		if tc.container != nil {
+			_ = tc.container.Terminate(tc.ctx)
+		}
+	}
+}
+
+// compareSchemas compares two databases using pg-schema-diff.
+func compareSchemas(t *testing.T, fromDSN, toDSN, msg string) {
+	t.Helper()
+
+	// Check pg-schema-diff is available
+	if _, err := exec.LookPath(pgSchemaDiff); err != nil {
+		t.Fatalf("pg-schema-diff not found. Install: go install github.com/stripe/pg-schema-diff/cmd/pg-schema-diff@latest")
+	}
+
+	diffCmd := exec.Command(pgSchemaDiff, "plan", "--from-dsn", fromDSN, "--to-dsn", toDSN)
+	diffOutput, diffErr := diffCmd.CombinedOutput()
+
+	require.NoError(t, diffErr, "%s\n\nOutput:\n%s", msg, string(diffOutput))
+}
+
+// replaceDB replaces the database name in a connection string.
+func replaceDB(connStr, newDB string) string {
+	// URL-style: postgresql://host:port/dbname?params
+	for i := len(connStr) - 1; i >= 0; i-- {
+		if connStr[i] == '/' {
+			for j := i + 1; j < len(connStr); j++ {
+				if connStr[j] == '?' {
+					return connStr[:i+1] + newDB + connStr[j:]
+				}
+			}
+			return connStr[:i+1] + newDB
+		}
+	}
+	// Space-separated: host=... dbname=...
+	for i := len(connStr) - 1; i >= 0; i-- {
+		if connStr[i] == ' ' {
+			return connStr[:i+1] + "dbname=" + newDB + connStr[i:]
+		}
+	}
+	return connStr + " dbname=" + newDB
+}
+
+// createTestDBs creates test databases using the base connection string.
+func createTestDBs(t *testing.T, connStrBase string, names ...string) map[string]string {
+	t.Helper()
+
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, connStrBase)
+	require.NoError(t, err)
+	defer pool.Close()
+
+	require.NoError(t, pool.Ping(ctx))
+
+	results := make(map[string]string)
+	for _, name := range names {
+		_, err := pool.Exec(ctx, "DROP DATABASE IF EXISTS "+name)
+		require.NoError(t, err)
+		_, err = pool.Exec(ctx, "CREATE DATABASE "+name)
+		require.NoError(t, err)
+		results[name] = replaceDB(connStrBase, name)
+	}
+	return results
+}
+
+// cleanupTestDBs drops the test databases.
+func cleanupTestDBs(t *testing.T, connStrBase string, names ...string) {
+	t.Helper()
+
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, connStrBase)
+	if err != nil {
+		return
+	}
+	defer pool.Close()
+
+	for _, name := range names {
+		_, _ = pool.Exec(ctx, "DROP DATABASE IF EXISTS "+name)
+	}
+}
+
+// runCleaner runs the cleaner tool on the given input and returns the output.
+func runCleaner(t *testing.T, input string) string {
+	t.Helper()
+
+	// Get absolute path to binary from project root
+	cwd, err := os.Getwd()
+	require.NoError(t, err)
+	binaryPath := filepath.Join(cwd, "..", "..", binaryName)
+
+	cmd := exec.Command(binaryPath)
+	cmd.Stdin = strings.NewReader(input)
+	output, err := cmd.Output()
+	require.NoError(t, err, "cleaner failed.\nInput:\n%s\n\nOutput:\n%s", input, string(output))
+	return string(output)
+}
+
+// loadFixture loads a test fixture from testdata/e2e or testdata/integration directory.
+func loadFixture(t *testing.T, name string) string {
+	t.Helper()
+	// Try e2e first, then integration
+	for _, dir := range []string{"e2e", "integration"} {
+		path := filepath.Join("..", "..", "testdata", dir, name)
+		data, err := os.ReadFile(path)
+		if err == nil {
+			return string(data)
+		}
+	}
+	require.Fail(t, "failed to read fixture: %s", name)
+	return ""
+}
+
+// TestE2E_ValidateInfrastructure is a quick sanity check that deploying the same
+// schema to two databases produces identical schemas. This validates the test
+// environment (container, pg-schema-diff, database) works correctly.
+func TestE2E_ValidateInfrastructure(t *testing.T) {
+	if testing.Short() {
+		t.Skip("E2E tests require full test run: go test ./...")
+	}
+
+	inputSQL := loadFixture(t, "basic_table_input.sql")
+	ctx := context.Background()
+
+	dbNames := []string{"infra_db1", "infra_db2"}
+	connStrs := createTestDBs(t, container.connStr, dbNames...)
+	defer cleanupTestDBs(t, container.connStr, dbNames...)
+
+	// Deploy schema to both databases
+	for _, name := range dbNames {
+		pool, err := pgxpool.New(ctx, connStrs[name])
+		require.NoError(t, err, "failed to connect to %s", name)
+		defer pool.Close()
+		require.NoError(t, pool.Ping(ctx))
+		_, err = pool.Exec(ctx, inputSQL)
+		require.NoError(t, err, "failed to deploy schema to %s", name)
+	}
+
+	// Compare schemas - should be identical
+	compareSchemas(t, connStrs[dbNames[0]], connStrs[dbNames[1]],
+		"INFRASTRUCTURE BUG: Same SQL should produce identical schemas")
+}
+
+// TestE2E_PgDumpCleanRemigrate tests that applying the cleaner to a schema
+// produces a semantically equivalent result:
+//
+// 1. Load a test fixture into a database (original)
+// 2. Pass fixture through the cleaner
+// 3. Load cleaned output into a new database (cleaned)
+// 4. Compare original and cleaned schemas
+//
+// This ensures the cleaner produces semantically equivalent schemas.
+func TestE2E_PgDumpCleanRemigrate(t *testing.T) {
+	if testing.Short() {
+		t.Skip("E2E tests require full test run: go test ./...")
+	}
+
+	fixtures := []string{
+		"basic_table_input.sql",
+		"fk_check_input.sql",
+		"sequences_input.sql",
+		"fk_cascade_input.sql",
+		"fk_no_action_input.sql",
+		"types_input.sql",
+		"alter_column_input.sql",
+		"self_referential_input.sql",
+		"partial_indexes_input.sql",
+		"materialized_views_input.sql",
+		"collation_input.sql",
+		"generated_columns_input.sql",
+		"identity_columns_input.sql",
+		"triggers_input.sql",
+		"complex_schema_input.sql",
+		"exclusion_constraints_input.sql",
+		"range_types_input.sql",
+		"partitioned_tables_input.sql",
+		"fk_column_mapping_input.sql",
+		"schemas_input.sql",
+	}
+
+	ctx := context.Background()
+
+	for _, fixture := range fixtures {
+		t.Run(fixture, func(t *testing.T) {
+			inputSQL := loadFixture(t, fixture)
+
+			dbNames := []string{"orig", "clean"}
+			connStrs := createTestDBs(t, container.connStr, dbNames...)
+			defer cleanupTestDBs(t, container.connStr, dbNames...)
+
+			// Step 1: Load fixture into original database
+			poolOrig, err := pgxpool.New(ctx, connStrs[dbNames[0]])
+			require.NoError(t, err, "failed to connect to original database")
+			defer poolOrig.Close()
+			require.NoError(t, poolOrig.Ping(ctx))
+			_, err = poolOrig.Exec(ctx, inputSQL)
+			require.NoError(t, err, "failed to load fixture into original database")
+
+			// Step 2: Run cleaner on fixture
+			cleanedOutput := runCleaner(t, inputSQL)
+
+			// Step 3: Load cleaned schema into second database
+			poolClean, err := pgxpool.New(ctx, connStrs[dbNames[1]])
+			require.NoError(t, err, "failed to connect to cleaned database")
+			defer poolClean.Close()
+			require.NoError(t, poolClean.Ping(ctx))
+			_, err = poolClean.Exec(ctx, cleanedOutput)
+			require.NoError(t, err, "failed to load cleaned schema.\nCleaned SQL:\n%s", cleanedOutput)
+
+			// Step 4: Compare schemas - should be semantically equivalent
+			compareSchemas(t, connStrs[dbNames[0]], connStrs[dbNames[1]],
+				"Cleaner should produce semantically equivalent schema")
+		})
+	}
+}

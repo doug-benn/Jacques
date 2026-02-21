@@ -1,0 +1,25 @@
+CREATE TABLE public.users (
+    id bigint PRIMARY KEY,
+    username text NOT NULL,
+    email text NOT NULL,
+    status varchar(50),
+    created_at timestamp without time zone NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE public.products (
+    id bigint PRIMARY KEY,
+    name text NOT NULL,
+    price integer,
+    description text NOT NULL,
+    is_active boolean NOT NULL DEFAULT true
+);
+
+CREATE TABLE public.logs (
+    id bigint PRIMARY KEY,
+    message text NOT NULL,
+    severity text
+);
+
+ALTER TABLE public.users ALTER COLUMN email DROP NOT NULL;
+
+ALTER TABLE public.logs ALTER COLUMN severity DROP NOT NULL;
