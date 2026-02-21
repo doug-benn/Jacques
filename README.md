@@ -4,7 +4,7 @@
 
 _"Voilà. He is clean."_ - Jacques (Finding Nemo)
 
-Jacques cleans and consolidated database schema dumps.
+Jacques cleans and consolidates database schema dumps.
 
 Currently supports **PostgreSQL**. More databases coming soon.
 
