@@ -5,6 +5,8 @@ import (
 	"strings"
 )
 
+// Version is set at build time by goreleaser via ldflags (-X main.Version={{.Version}}).
+// For local development builds, it falls back to git describe output.
 var Version = versionFromGit()
 
 func versionFromGit() string {
