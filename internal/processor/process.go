@@ -12,10 +12,18 @@ import (
 var createSeqRE = regexp.MustCompile(`(?i)^CREATE\s+SEQUENCE\s+`)
 var alterSeqOwnedByRE = regexp.MustCompile(`(?i)^ALTER\s+SEQUENCE\b.*\bOWNED\s+BY\b`)
 var createTypeDomainSchemaRE = regexp.MustCompile(`(?m)^CREATE (TYPE|DOMAIN|SCHEMA)`)
+var createDomainRE = regexp.MustCompile(`(?m)^CREATE\s+DOMAIN`)
+var partitionOfRE = regexp.MustCompile(`(?i)^CREATE\s+TABLE\s+.*\s+PARTITION\s+OF\s+`)
+var blockCommentRE = regexp.MustCompile(`(?s)/\*.*?\*/`)
+var dropRE = regexp.MustCompile(`(?i)^DROP\s+(TABLE|INDEX|SEQUENCE|VIEW|MATERIALIZED\s+VIEW)\s+(IF\s+EXISTS\s+)?(\S+)`)
 
-func Process(sql string) string {
-	// Pre-process: remove line comments to prevent parser from combining statements
-	sql = removeLineComments(sql)
+func Process(sql string, opts *Options) string {
+	if opts == nil {
+		opts = &Options{}
+	}
+
+	// Pre-process: remove block comments and line comments
+	sql = preprocessSQL(sql)
 
 	statements := parser.SplitStatements(sql)
 
@@ -47,6 +55,10 @@ func Process(sql string) string {
 		// Track CREATE TYPE, CREATE DOMAIN, and CREATE SCHEMA statements to output before tables
 		// Use a regex to match at the start of a line (not just anywhere in statement)
 		if createTypeDomainSchemaRE.MatchString(stmt) {
+			// Skip DOMAIN unless ExperimentalFolding is enabled
+			if createDomainRE.MatchString(stmt) && !opts.ExperimentalFolding {
+				continue // Skip DOMAIN entirely when not enabled
+			}
 			typeStmts = append(typeStmts, stmt)
 			continue
 		}
@@ -61,6 +73,11 @@ func Process(sql string) string {
 		}
 
 		if strings.HasPrefix(strings.ToUpper(stripped), "CREATE TABLE") {
+			// Skip partition children unless ExperimentalFolding is enabled
+			if partitionOfRE.MatchString(stripped) && !opts.ExperimentalFolding {
+				continue
+			}
+
 			td, err := cleaner.ParseCreateTable(stmt)
 			if err != nil {
 				passThroughs = append(passThroughs, stmt)
@@ -96,6 +113,23 @@ func Process(sql string) string {
 			}
 			passThroughs = append(passThroughs, cleaner.Transform(*result))
 			continue
+		}
+
+		// Handle DROP statements - add IF EXISTS (only when ExperimentalFolding is enabled)
+		if strings.HasPrefix(strings.ToUpper(stripped), "DROP ") && opts.ExperimentalFolding {
+			dropMatch := dropRE.FindStringSubmatch(stripped)
+			if dropMatch != nil && dropMatch[2] == "" {
+				// No IF EXISTS, add it
+				dropType := dropMatch[1]
+				objName := dropMatch[3]
+				transformed := "DROP " + dropType + " IF EXISTS " + objName
+				// Preserve semicolon if present
+				if strings.HasSuffix(strings.TrimSuffix(stmt, ";"), ";") {
+					transformed += ";"
+				}
+				passThroughs = append(passThroughs, transformed)
+				continue
+			}
 		}
 
 		passThroughs = append(passThroughs, stmt)
@@ -186,7 +220,10 @@ func Process(sql string) string {
 	allTypes := append([]string{}, typeStmts...)
 	for _, stmt := range passThroughs {
 		upper := strings.ToUpper(strings.TrimSpace(stmt))
-		if strings.HasPrefix(upper, "CREATE TYPE") || strings.HasPrefix(upper, "CREATE DOMAIN") {
+		// Only include DOMAIN if ExperimentalFolding is enabled
+		if strings.HasPrefix(upper, "CREATE TYPE") {
+			allTypes = append(allTypes, stmt)
+		} else if strings.HasPrefix(upper, "CREATE DOMAIN") && opts.ExperimentalFolding {
 			allTypes = append(allTypes, stmt)
 		}
 	}
@@ -234,8 +271,13 @@ func Process(sql string) string {
 	// Output sequences before tables (they must exist before tables use DEFAULT nextval)
 	output = append(output, keptSequences...)
 
+	// Output tables
 	for _, key := range tableOrder {
 		if td, ok := tables[key]; ok {
+			// Skip INHERITS clause unless ExperimentalFolding is enabled
+			if td.Inherits != "" && !opts.ExperimentalFolding {
+				td.Inherits = ""
+			}
 			output = append(output, cleaner.RenderTable(td))
 		}
 	}
@@ -246,10 +288,16 @@ func Process(sql string) string {
 		upper := strings.ToUpper(stripped)
 
 		// Skip types, sequences, and tables (already handled)
+		// Exception: partition children when ExperimentalFolding is enabled
+		if strings.HasPrefix(upper, "CREATE TABLE") {
+			if opts.ExperimentalFolding && partitionOfRE.MatchString(stripped) {
+				output = append(output, stmt)
+			}
+			continue
+		}
 		if strings.HasPrefix(upper, "CREATE TYPE") ||
 			strings.HasPrefix(upper, "CREATE DOMAIN") ||
-			strings.HasPrefix(upper, "CREATE SEQUENCE") ||
-			strings.HasPrefix(upper, "CREATE TABLE") {
+			strings.HasPrefix(upper, "CREATE SEQUENCE") {
 			continue
 		}
 
@@ -268,6 +316,23 @@ func extractSequenceName(stmt string) string {
 		return m[1]
 	}
 	return ""
+}
+
+// preprocessSQL removes block comments and line comments from SQL
+// This prevents the parser from combining multiple statements that have comments between them
+func preprocessSQL(sql string) string {
+	// 1. Remove block comments /* ... */
+	sql = removeBlockComments(sql)
+
+	// 2. Remove line comments -- ...
+	sql = removeLineComments(sql)
+
+	return sql
+}
+
+// removeBlockComments removes block comments (/* ... */) from SQL
+func removeBlockComments(sql string) string {
+	return blockCommentRE.ReplaceAllString(sql, "")
 }
 
 // removeLineComments removes line comments (-- comment) from SQL

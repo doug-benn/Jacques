@@ -1,6 +1,7 @@
 package cleaner
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -87,6 +88,17 @@ func TestRouteAlter(t *testing.T) {
 				"foo": newTable("foo", []*model.ColumnDef{{Name: "id", RawDef: "bigint DEFAULT 1"}}),
 			},
 			wantNil: true,
+		},
+		{
+			name: "DROP NOT NULL folded",
+			stmt: "ALTER TABLE foo ALTER COLUMN id DROP NOT NULL;",
+			tables: map[string]*model.TableDef{
+				"foo": newTable("foo", []*model.ColumnDef{{Name: "id", RawDef: "bigint NOT NULL"}}),
+			},
+			wantNil: true,
+			check: func(t *testing.T, _ *string, tables map[string]*model.TableDef) {
+				assert.NotContains(t, strings.ToUpper(tables["foo"].Columns[0].RawDef), "NOT NULL")
+			},
 		},
 		{
 			name: "ADD PRIMARY KEY single folded",

@@ -203,3 +203,65 @@ func TestCLI_CombinedFlags(t *testing.T) {
 	assert.Contains(t, string(output), "CREATE TABLE qux")
 	assert.Contains(t, string(output), "CREATE INDEX")
 }
+
+func TestCLI_ExperimentalFoldingFlag_DomainTypes(t *testing.T) {
+	bin := filepath.Join(getProjectRoot(), "jacques.exe")
+	if _, err := os.Stat(bin); err != nil {
+		t.Skip("Binary not found, skipping CLI test")
+	}
+
+	input := "CREATE TABLE public.users (id int, email public.email); CREATE DOMAIN public.email AS text;"
+
+	cmd := exec.Command(bin)
+	cmd.Stdin = strings.NewReader(input)
+	output, err := cmd.CombinedOutput()
+	require.NoError(t, err)
+	assert.NotContains(t, string(output), "CREATE DOMAIN")
+	assert.Contains(t, string(output), "email public.email")
+}
+
+func TestCLI_ExperimentalFoldingFlag_PartitionChildren(t *testing.T) {
+	bin := filepath.Join(getProjectRoot(), "jacques.exe")
+	if _, err := os.Stat(bin); err != nil {
+		t.Skip("Binary not found, skipping CLI test")
+	}
+
+	input := "CREATE TABLE public.orders (id int) PARTITION BY RANGE (id); CREATE TABLE public.orders_2024 PARTITION OF public.orders FOR VALUES FROM (MINVALUE) TO (2025);"
+
+	cmd := exec.Command(bin)
+	cmd.Stdin = strings.NewReader(input)
+	output, err := cmd.CombinedOutput()
+	require.NoError(t, err)
+	assert.NotContains(t, string(output), "PARTITION OF")
+	assert.Contains(t, string(output), "PARTITION BY RANGE")
+}
+
+func TestCLI_ExperimentalFoldingFlag_WithFlag_DomainTypes(t *testing.T) {
+	bin := filepath.Join(getProjectRoot(), "jacques.exe")
+	if _, err := os.Stat(bin); err != nil {
+		t.Skip("Binary not found, skipping CLI test")
+	}
+
+	input := "CREATE TABLE public.users (id int, email public.email); CREATE DOMAIN public.email AS text;"
+
+	cmd := exec.Command(bin, "--experimental-folding")
+	cmd.Stdin = strings.NewReader(input)
+	output, err := cmd.CombinedOutput()
+	require.NoError(t, err)
+	assert.Contains(t, string(output), "CREATE DOMAIN")
+}
+
+func TestCLI_ExperimentalFoldingFlag_WithFlag_PartitionChildren(t *testing.T) {
+	bin := filepath.Join(getProjectRoot(), "jacques.exe")
+	if _, err := os.Stat(bin); err != nil {
+		t.Skip("Binary not found, skipping CLI test")
+	}
+
+	input := "CREATE TABLE public.orders (id int) PARTITION BY RANGE (id); CREATE TABLE public.orders_2024 PARTITION OF public.orders FOR VALUES FROM (MINVALUE) TO (2025);"
+
+	cmd := exec.Command(bin, "--experimental-folding")
+	cmd.Stdin = strings.NewReader(input)
+	output, err := cmd.CombinedOutput()
+	require.NoError(t, err)
+	assert.Contains(t, string(output), "PARTITION OF")
+}

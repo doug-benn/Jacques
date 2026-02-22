@@ -369,7 +369,12 @@ func TestE2E_PgDumpCleanRemigrate(t *testing.T) {
 	// E2E test fixtures that verify semantic equivalence using pg-schema-diff.
 	// Some fixtures are skipped here and covered by integration tests instead:
 	// - partitioned_tables: pg-schema-diff doesn't support partitioned tables
-	//   (fails with "deleting partitions without dropping parent table" error)
+	//        (fails with "deleting partitions without dropping parent table" error)
+	// - domain_types.sql
+	// - table_inheritance.sql
+	// - drop_statements_input.sql - SKIP: Cannot test "add IF EXISTS" in E2E
+	//        because input SQL (without IF EXISTS) cannot be loaded into PostgreSQL
+	//        for schema comparison. Feature tested by TestFeature_IfExistsForDrop.
 	fixtures := []string{
 		"basic_table_input.sql",
 		"fk_check_input.sql",
@@ -385,14 +390,14 @@ func TestE2E_PgDumpCleanRemigrate(t *testing.T) {
 		"generated_columns_input.sql",
 		"identity_columns_input.sql",
 		"triggers_input.sql",
+		"functions_input.sql",
+		"rls_policies_input.sql",
 		"complex_schema_input.sql",
 		"exclusion_constraints_input.sql",
 		"range_types_input.sql",
-		// partitioned_tables_input.sql - SKIP: pg-schema-diff doesn't support
-		// partitioned tables (fails with "deleting partitions without dropping
-		// parent table" error). Covered by TestIntegration_PartitionedTables.
 		"fk_column_mapping_input.sql",
 		"schemas_input.sql",
+		"block_comments_input.sql",
 	}
 
 	ctx := context.Background()

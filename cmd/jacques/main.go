@@ -14,12 +14,14 @@ func main() {
 	var input string
 	var output string
 	var version bool
+	var experimentalFolding bool
 	flag.StringVar(&input, "i", "-", "Input file (default: stdin)")
 	flag.StringVar(&input, "input", "-", "Input file (default: stdin)")
 	flag.StringVar(&output, "o", "-", "Output file (default: stdout)")
 	flag.StringVar(&output, "output", "-", "Output file (default: stdout)")
 	flag.BoolVar(&version, "version", false, "Print version information")
 	flag.BoolVar(&version, "v", false, "Print version information")
+	flag.BoolVar(&experimentalFolding, "experimental-folding", false, "Enable features not covered by E2E tests (partitioned tables, domain types, inheritance) - please check output carefully")
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Jacques %s\n\n", Version)
@@ -82,7 +84,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	result := processor.Process(string(data))
+	opts := &processor.Options{ExperimentalFolding: experimentalFolding}
+	result := processor.Process(string(data), opts)
 
 	_, err = fmt.Fprintln(out, result)
 	if err != nil {

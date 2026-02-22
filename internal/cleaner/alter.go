@@ -28,6 +28,7 @@ var addFKRE = regexp.MustCompile(`^ALTER\s+TABLE\s+(?:ONLY\s+)?(?:([a-zA-Z_][a-z
 var fkDetailsRE = regexp.MustCompile(`FOREIGN\s+KEY\s*\(([^)]+)\)\s*REFERENCES\s+([a-zA-Z_][a-zA-Z_0-9]*)(?:\.([a-zA-Z_][a-zA-Z_0-9]*))?\s*\(([^)]+)\)(\s+ON\s+DELETE\s+(NO\s+ACTION|RESTRICT|CASCADE|SET\s+NULL|SET\s+DEFAULT))?(\s+ON\s+UPDATE\s+(NO\s+ACTION|RESTRICT|CASCADE|SET\s+NULL|SET\s+DEFAULT))?(\s+MATCH\s+(FULL|PARTIAL))?`)
 var addColumnRE = regexp.MustCompile(`^ALTER\s+TABLE\s+(?:ONLY\s+)?(?:([a-zA-Z_][a-zA-Z_0-9]*)\.)?([a-zA-Z_][a-zA-Z_0-9]*)\s+ADD\s+(?:COLUMN\s+)?(?:IF\s+NOT\s+EXISTS\s+)?([a-zA-Z_][a-zA-Z_0-9]*)\s+(.*)`)
 var dropDefaultRE = regexp.MustCompile(`^ALTER\s+TABLE\s+(?:ONLY\s+)?(?:([a-zA-Z_][a-zA-Z_0-9]*)\.)?([a-zA-Z_][a-zA-Z_0-9]*)\s+ALTER\s+COLUMN\s+([a-zA-Z_][a-zA-Z_0-9]*)\s+DROP\s+DEFAULT\b`)
+var dropNotNullRE = regexp.MustCompile(`^ALTER\s+TABLE\s+(?:ONLY\s+)?(?:([a-zA-Z_][a-zA-Z_0-9]*)\.)?([a-zA-Z_][a-zA-Z_0-9]*)\s+ALTER\s+COLUMN\s+([a-zA-Z_][a-zA-Z_0-9]*)\s+DROP\s+NOT\s+NULL\b`)
 var alterNextvalRE = regexp.MustCompile(`nextval\('([^']+)'`)
 var addConstraintRE = regexp.MustCompile(`^ADD\s+`)
 var addExcludeRE = regexp.MustCompile(`^ALTER\s+TABLE\s+(?:ONLY\s+)?(?:([a-zA-Z_][a-zA-Z_0-9]*)\.)?([a-zA-Z_][a-zA-Z_0-9]*)\s+ADD\s+CONSTRAINT\s+(\S+)\s+EXCLUDE\s+(.+)`)
@@ -126,6 +127,20 @@ func RouteAlter(stmt string, tables map[string]*model.TableDef) *string {
 	}
 
 	if dropDefaultRE.MatchString(stripped) {
+		return nil
+	}
+
+	if m := dropNotNullRE.FindStringSubmatch(stripped); m != nil {
+		schema, tname, col := m[1], m[2], m[3]
+		td := FindTable(tables, schema, tname)
+		if td != nil {
+			for _, c := range td.Columns {
+				if strings.EqualFold(c.Name, col) {
+					c.RawDef = strings.TrimSpace(notNullRE.ReplaceAllString(c.RawDef, ""))
+					break
+				}
+			}
+		}
 		return nil
 	}
 
