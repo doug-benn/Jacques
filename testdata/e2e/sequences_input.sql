@@ -66,7 +66,24 @@ ALTER TABLE public.products ALTER COLUMN id
 ALTER TABLE ONLY public.products
     ADD CONSTRAINT products_pkey PRIMARY KEY (id);
 
--- Table using smallint with sequence - should NOT convert to SERIAL (smallint not supported)
+-- Table using integer with dedicated sequence - should convert to SERIAL
+CREATE TABLE public.accounts (
+    id integer NOT NULL,
+    name text NOT NULL
+);
+
+CREATE SEQUENCE public.accounts_id_seq
+    START WITH 1 INCREMENT BY 1 NO MINVALUE NO MAXVALUE CACHE 1;
+
+ALTER SEQUENCE public.accounts_id_seq OWNED BY public.accounts.id;
+
+ALTER TABLE public.accounts ALTER COLUMN id
+    SET DEFAULT nextval('public.accounts_id_seq'::regclass);
+
+ALTER TABLE ONLY public.accounts
+    ADD CONSTRAINT accounts_pkey PRIMARY KEY (id);
+
+-- Table using smallint with sequence - should convert to SMALLSERIAL
 CREATE TABLE public.tags (
     id smallint NOT NULL,
     name text NOT NULL

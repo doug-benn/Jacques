@@ -196,11 +196,14 @@ func Process(sql string, opts *Options) string {
 		for _, col := range td.Columns {
 			if col.SequenceName != "" {
 				normalized := normalizeSequenceName(col.SequenceName)
-				// Only set SERIAL if count == 1 AND column type is bigint or integer (not smallint)
+				// Only set SERIAL if count == 1 AND column type is bigint, integer, or smallint
 				if sequenceUsageCount[normalized] == 1 {
 					rawDefLower := strings.ToLower(col.RawDef)
-					if (strings.Contains(rawDefLower, "bigint") && !strings.Contains(rawDefLower, "smallint")) ||
-						strings.Contains(rawDefLower, "integer") ||
+					if strings.Contains(rawDefLower, "bigint") && !strings.Contains(rawDefLower, "smallint") {
+						col.IsSerial = true
+					} else if strings.Contains(rawDefLower, "smallint") {
+						col.IsSerial = true
+					} else if strings.Contains(rawDefLower, "integer") ||
 						strings.EqualFold(strings.TrimSpace(col.RawDef), "int") {
 						col.IsSerial = true
 					} else {

@@ -370,7 +370,7 @@ func TestE2E_PgDumpCleanRemigrate(t *testing.T) {
 	// Some fixtures are skipped here and covered by integration tests instead:
 	// - partitioned_tables: pg-schema-diff doesn't support partitioned tables
 	//        (fails with "deleting partitions without dropping parent table" error)
-	// - domain_types.sql
+	// - domain_types_input.sql: pg-schema-diff doesn't support DOMAIN types (only enums)
 	// - table_inheritance.sql
 	// - drop_statements_input.sql - SKIP: Cannot test "add IF EXISTS" in E2E
 	//        because input SQL (without IF EXISTS) cannot be loaded into PostgreSQL

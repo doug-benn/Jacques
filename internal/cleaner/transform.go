@@ -312,10 +312,13 @@ func renderColumn(col *model.ColumnDef) string {
 	}
 
 	// For SERIAL columns, we need to explicitly add PRIMARY KEY if it's a primary key
-	// because we're replacing the entire column definition with just SERIAL/BIGSERIAL
+	// because we're replacing the entire column definition with just SERIAL/BIGSERIAL/SMALLSERIAL
 	if col.IsSerial {
-		if strings.Contains(strings.ToLower(col.RawDef), "bigint") {
+		rawDefLower := strings.ToLower(col.RawDef)
+		if strings.Contains(rawDefLower, "bigint") && !strings.Contains(rawDefLower, "smallint") {
 			sb.WriteString("BIGSERIAL")
+		} else if strings.Contains(rawDefLower, "smallint") {
+			sb.WriteString("SMALLSERIAL")
 		} else {
 			sb.WriteString("SERIAL")
 		}

@@ -29,7 +29,12 @@ CREATE TABLE public.products (
     price numeric(10,2) NOT NULL
 );
 
+CREATE TABLE public.accounts (
+    id SERIAL PRIMARY KEY,
+    name text NOT NULL
+);
+
 CREATE TABLE public.tags (
-    id smallint PRIMARY KEY DEFAULT nextval('public.tags_id_seq'::regclass),
+    id SMALLSERIAL PRIMARY KEY,
     name text NOT NULL
 );

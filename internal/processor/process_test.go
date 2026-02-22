@@ -126,6 +126,106 @@ func assertIndexPreserved(t *testing.T, sql, indexName string) {
 	assertStatementContains(t, sql, "CREATE INDEX "+indexName, "Index "+indexName)
 }
 
+//Intergration Fixture Tests
+
+func TestIntegration_DomainTypes(t *testing.T) {
+	input := loadIntegrationFixture(t, "domain_types_input.sql")
+	expected := loadIntegrationFixture(t, "domain_types_expected.sql")
+	result := processExperimental(input)
+	assert.Equal(t, normalizeSQL(expected), normalizeSQL(result))
+}
+
+func TestIntegration_Inheritance(t *testing.T) {
+	input := loadIntegrationFixture(t, "inheritance_input.sql")
+	expected := loadIntegrationFixture(t, "inheritance_expected.sql")
+	result := processExperimental(input)
+	assert.Equal(t, normalizeSQL(expected), normalizeSQL(result))
+}
+func TestIntegration_PartitionedTables(t *testing.T) {
+	input := loadIntegrationFixture(t, "partitioned_tables_input.sql")
+	expected := loadIntegrationFixture(t, "partitioned_tables_expected.sql")
+	result := processExperimental(input)
+	assert.Equal(t, normalizeSQL(expected), normalizeSQL(result))
+}
+
+func TestIntegration_IfExistsForDrop(t *testing.T) {
+	input := loadIntegrationFixture(t, "drop_statements_input.sql")
+	expected := loadIntegrationFixture(t, "drop_statements_expected.sql")
+	result := processExperimental(input)
+	assert.Equal(t, normalizeSQL(expected), normalizeSQL(result))
+}
+
+func TestGating_DomainTypesSkippedByDefault(t *testing.T) {
+	input := loadIntegrationFixture(t, "domain_types_input.sql")
+	result := processDefault(input)
+	assert.NotContains(t, result, "CREATE DOMAIN")
+	assert.Contains(t, result, "email public.email")
+}
+
+func TestGating_DomainTypesPreservedWithExperimentalFolding(t *testing.T) {
+	input := loadIntegrationFixture(t, "domain_types_input.sql")
+	result := processExperimental(input)
+	assert.Contains(t, result, "CREATE DOMAIN public.email")
+	assert.Contains(t, result, "CREATE DOMAIN public.positive_int")
+}
+
+func TestGating_PartitionChildrenSkippedByDefault(t *testing.T) {
+	input := loadIntegrationFixture(t, "partitioned_tables_input.sql")
+	result := processDefault(input)
+	assert.NotContains(t, result, "PARTITION OF")
+	assert.Contains(t, result, "PARTITION BY RANGE")
+	assert.Contains(t, result, "PARTITION BY LIST")
+	assert.Contains(t, result, "PARTITION BY HASH")
+}
+
+func TestGating_PartitionChildrenPreservedWithExperimentalFolding(t *testing.T) {
+	input := loadIntegrationFixture(t, "partitioned_tables_input.sql")
+	result := processExperimental(input)
+	assert.Contains(t, result, "PARTITION OF")
+	assert.Contains(t, result, "PARTITION BY RANGE")
+}
+
+func TestRobust_InheritanceGatedByDefault(t *testing.T) {
+	input := loadIntegrationFixture(t, "inheritance_input.sql")
+	result := processDefault(input)
+
+	assert.Contains(t, result, "CREATE TABLE public.users")
+	assert.Contains(t, result, "CREATE TABLE public.administrators")
+	assert.Contains(t, result, "CREATE TABLE public.moderators")
+	assert.Contains(t, result, "CREATE TABLE public.registered_users")
+
+	assert.NotContains(t, result, "INHERITS")
+}
+
+func TestRobust_InheritancePreservedWithExperimentalFolding(t *testing.T) {
+	input := loadIntegrationFixture(t, "inheritance_input.sql")
+	result := processExperimental(input)
+
+	assert.Contains(t, result, "CREATE TABLE public.users")
+	assert.Contains(t, result, "CREATE TABLE public.administrators")
+	assert.Contains(t, result, "INHERITS (public.users)")
+}
+
+func TestRobust_DomainTypesOrdering(t *testing.T) {
+	input := loadIntegrationFixture(t, "domain_types_input.sql")
+	result := processExperimental(input)
+
+	assert.Contains(t, result, "email", "users")
+	assertTypeBeforeTable(t, result, "positive_int", "orders")
+	assertTypeBeforeTable(t, result, "order_status", "orders")
+
+	assert.Contains(t, result, "CREATE DOMAIN public.email")
+	assert.Contains(t, result, "CREATE DOMAIN public.positive_int")
+	assert.Contains(t, result, "CREATE DOMAIN public.phone_number")
+	assert.Contains(t, result, "CREATE DOMAIN public.order_status")
+
+	assert.Contains(t, result, "email public.email NOT NULL UNIQUE")
+	assert.Contains(t, result, "quantity public.positive_int NOT NULL")
+	assert.Contains(t, result, "status public.order_status NOT NULL DEFAULT 'pending'")
+}
+
+//e2e Fixture Tests
+
 func TestIntegration_BasicTable(t *testing.T) {
 	input := loadTestFixture(t, "basic_table_input.sql")
 	expected := loadTestFixture(t, "basic_table_expected.sql")
@@ -204,24 +304,10 @@ func TestIntegration_GeneratedColumns(t *testing.T) {
 	assert.Equal(t, normalizeSQL(expected), normalizeSQL(result))
 }
 
-func TestIntegration_DomainTypes(t *testing.T) {
-	input := loadIntegrationFixture(t, "domain_types_input.sql")
-	expected := loadIntegrationFixture(t, "domain_types_expected.sql")
-	result := processExperimental(input)
-	assert.Equal(t, normalizeSQL(expected), normalizeSQL(result))
-}
-
 func TestIntegration_Schemas(t *testing.T) {
 	input := loadTestFixture(t, "schemas_input.sql")
 	expected := loadTestFixture(t, "schemas_expected.sql")
 	result := processDefault(input)
-	assert.Equal(t, normalizeSQL(expected), normalizeSQL(result))
-}
-
-func TestIntegration_Inheritance(t *testing.T) {
-	input := loadIntegrationFixture(t, "inheritance_input.sql")
-	expected := loadIntegrationFixture(t, "inheritance_expected.sql")
-	result := processExperimental(input)
 	assert.Equal(t, normalizeSQL(expected), normalizeSQL(result))
 }
 
@@ -236,13 +322,6 @@ func TestIntegration_ExclusionConstraints(t *testing.T) {
 	input := loadTestFixture(t, "exclusion_constraints_input.sql")
 	expected := loadTestFixture(t, "exclusion_constraints_expected.sql")
 	result := processDefault(input)
-	assert.Equal(t, normalizeSQL(expected), normalizeSQL(result))
-}
-
-func TestIntegration_PartitionedTables(t *testing.T) {
-	input := loadIntegrationFixture(t, "partitioned_tables_input.sql")
-	expected := loadIntegrationFixture(t, "partitioned_tables_expected.sql")
-	result := processExperimental(input)
 	assert.Equal(t, normalizeSQL(expected), normalizeSQL(result))
 }
 
@@ -285,13 +364,6 @@ func TestIntegration_Functions(t *testing.T) {
 	input := loadTestFixture(t, "functions_input.sql")
 	expected := loadTestFixture(t, "functions_expected.sql")
 	result := processDefault(input)
-	assert.Equal(t, normalizeSQL(expected), normalizeSQL(result))
-}
-
-func TestIntegration_IfExistsForDrop(t *testing.T) {
-	input := loadIntegrationFixture(t, "drop_statements_input.sql")
-	expected := loadIntegrationFixture(t, "drop_statements_expected.sql")
-	result := processExperimental(input)
 	assert.Equal(t, normalizeSQL(expected), normalizeSQL(result))
 }
 
@@ -341,54 +413,6 @@ ALTER TABLE posts ADD CONSTRAINT posts_author_fkey FOREIGN KEY (author_id) REFER
 	assert.Contains(t, result, "ON UPDATE CASCADE")
 }
 
-func TestRobust_DomainTypesOrdering(t *testing.T) {
-	input := loadIntegrationFixture(t, "domain_types_input.sql")
-	result := processExperimental(input)
-
-	assert.Contains(t, result, "email", "users")
-	assertTypeBeforeTable(t, result, "positive_int", "orders")
-	assertTypeBeforeTable(t, result, "order_status", "orders")
-
-	assert.Contains(t, result, "CREATE DOMAIN public.email")
-	assert.Contains(t, result, "CREATE DOMAIN public.positive_int")
-	assert.Contains(t, result, "CREATE DOMAIN public.phone_number")
-	assert.Contains(t, result, "CREATE DOMAIN public.order_status")
-
-	assert.Contains(t, result, "email public.email NOT NULL UNIQUE")
-	assert.Contains(t, result, "quantity public.positive_int NOT NULL")
-	assert.Contains(t, result, "status public.order_status NOT NULL DEFAULT 'pending'")
-}
-
-func TestGating_DomainTypesSkippedByDefault(t *testing.T) {
-	input := loadIntegrationFixture(t, "domain_types_input.sql")
-	result := processDefault(input)
-	assert.NotContains(t, result, "CREATE DOMAIN")
-	assert.Contains(t, result, "email public.email")
-}
-
-func TestGating_DomainTypesPreservedWithExperimentalFolding(t *testing.T) {
-	input := loadIntegrationFixture(t, "domain_types_input.sql")
-	result := processExperimental(input)
-	assert.Contains(t, result, "CREATE DOMAIN public.email")
-	assert.Contains(t, result, "CREATE DOMAIN public.positive_int")
-}
-
-func TestGating_PartitionChildrenSkippedByDefault(t *testing.T) {
-	input := loadIntegrationFixture(t, "partitioned_tables_input.sql")
-	result := processDefault(input)
-	assert.NotContains(t, result, "PARTITION OF")
-	assert.Contains(t, result, "PARTITION BY RANGE")
-	assert.Contains(t, result, "PARTITION BY LIST")
-	assert.Contains(t, result, "PARTITION BY HASH")
-}
-
-func TestGating_PartitionChildrenPreservedWithExperimentalFolding(t *testing.T) {
-	input := loadIntegrationFixture(t, "partitioned_tables_input.sql")
-	result := processExperimental(input)
-	assert.Contains(t, result, "PARTITION OF")
-	assert.Contains(t, result, "PARTITION BY RANGE")
-}
-
 func TestRobust_SchemasOrdering(t *testing.T) {
 	input := loadTestFixture(t, "schemas_input.sql")
 	result := processDefault(input)
@@ -397,27 +421,6 @@ func TestRobust_SchemasOrdering(t *testing.T) {
 	assert.Contains(t, result, "CREATE TABLE app.users")
 	assert.Contains(t, result, "CREATE TABLE public.countries")
 	assert.Contains(t, result, "country_id bigint REFERENCES public.countries")
-}
-
-func TestRobust_InheritanceGatedByDefault(t *testing.T) {
-	input := loadIntegrationFixture(t, "inheritance_input.sql")
-	result := processDefault(input)
-
-	assert.Contains(t, result, "CREATE TABLE public.users")
-	assert.Contains(t, result, "CREATE TABLE public.administrators")
-	assert.Contains(t, result, "CREATE TABLE public.moderators")
-	assert.Contains(t, result, "CREATE TABLE public.registered_users")
-
-	assert.NotContains(t, result, "INHERITS")
-}
-
-func TestRobust_InheritancePreservedWithExperimentalFolding(t *testing.T) {
-	input := loadIntegrationFixture(t, "inheritance_input.sql")
-	result := processExperimental(input)
-
-	assert.Contains(t, result, "CREATE TABLE public.users")
-	assert.Contains(t, result, "CREATE TABLE public.administrators")
-	assert.Contains(t, result, "INHERITS (public.users)")
 }
 
 func TestRobust_ComplexSchemaFeatures(t *testing.T) {
