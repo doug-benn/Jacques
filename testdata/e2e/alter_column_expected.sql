@@ -1,7 +1,7 @@
 CREATE TABLE public.users (
     id bigint PRIMARY KEY,
     username text NOT NULL,
-    email text NOT NULL,
+    email text,
     status varchar(50),
     created_at timestamp without time zone NOT NULL DEFAULT NOW()
 );
@@ -19,7 +19,3 @@ CREATE TABLE public.logs (
     message text NOT NULL,
     severity text
 );
-
-ALTER TABLE public.users ALTER COLUMN email DROP NOT NULL;
-
-ALTER TABLE public.logs ALTER COLUMN severity DROP NOT NULL;

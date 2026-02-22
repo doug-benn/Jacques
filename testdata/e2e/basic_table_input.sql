@@ -1,5 +1,15 @@
-SET statement_timeout = 0;
-SET lock_timeout = 0;
+-- Test fixture for basic table consolidation
+-- Features tested:
+--   - Noise removal: SET, OWNER TO, COMMENT
+--   - Sequence → SERIAL: sequence converted to BIGSERIAL
+--   - ALTER folding: PK, UNIQUE constraints folded into CREATE TABLE
+--   - ONLY removal: ALTER TABLE ONLY → ALTER TABLE
+--
+-- Input: pg_dump --schema-only output with noise and ALTER statements
+-- Expected: Clean CREATE TABLE with folded constraints
+
+SET statement_timeout = 0;           -- Noise: removed
+SET lock_timeout = 0;               -- Noise: removed
 
 CREATE TABLE public.users (
     id bigint NOT NULL,
@@ -7,24 +17,24 @@ CREATE TABLE public.users (
     created_at timestamp without time zone
 );
 
-CREATE SEQUENCE public.users_id_seq
+CREATE SEQUENCE public.users_id_seq  -- Converted to SERIAL type
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
     NO MAXVALUE
     CACHE 1;
 
-ALTER SEQUENCE public.users_id_seq OWNED BY public.users.id;
+ALTER SEQUENCE public.users_id_seq OWNED BY public.users.id;  -- Noise: removed
 
 ALTER TABLE public.users ALTER COLUMN id
-    SET DEFAULT nextval('public.users_id_seq'::regclass);
+    SET DEFAULT nextval('public.users_id_seq'::regclass);  -- Folded into BIGSERIAL
 
-ALTER TABLE ONLY public.users
-    ADD CONSTRAINT users_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.users       -- ONLY removed
+    ADD CONSTRAINT users_pkey PRIMARY KEY (id);  -- Folded into table
 
-ALTER TABLE ONLY public.users
-    ADD CONSTRAINT users_email_key UNIQUE (email);
+ALTER TABLE ONLY public.users       -- ONLY removed
+    ADD CONSTRAINT users_email_key UNIQUE (email);  -- Folded into table
 
-ALTER TABLE public.users OWNER TO testuser;
+ALTER TABLE public.users OWNER TO testuser;  -- Noise: removed
 
-COMMENT ON TABLE public.users IS 'Application users';
+COMMENT ON TABLE public.users IS 'Application users';  -- Noise: removed

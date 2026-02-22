@@ -1,5 +1,16 @@
 -- Test fixture for domain types
--- Covers: CREATE DOMAIN, domain usage in tables
+-- Features tested:
+--   - CREATE DOMAIN: Custom type definitions with constraints
+--   - Domain constraints: CHECK constraints on domains
+--   - Regex validation: Email pattern validation
+--   - Value constraints: Positive integers, allowed values
+--   - Domain usage: Tables using domain types as column types
+--   - Schema-qualified domains: public.email, public.positive_int
+--
+-- Input: pg_dump output with domain definitions
+-- Expected: Clean domain type output
+--
+-- Note: Domain types are folded when --experimental-folding is NOT used
 
 -- Domain for email
 CREATE DOMAIN public.email AS text

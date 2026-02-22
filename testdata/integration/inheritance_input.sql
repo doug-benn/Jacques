@@ -1,5 +1,16 @@
 -- Test fixture for table inheritance
--- Covers: INHERITS clause, child tables, parent-child relationships
+-- Features tested:
+--   - INHERITS clause: Parent-child table relationships
+--   - Parent tables: Base tables with inherited columns
+--   - Child tables: Tables inheriting from parents
+--   - Additional child columns: Child-specific columns beyond parent
+--   - FK to parent: References to parent table
+--   - Primary keys on children: Separate PKs on child tables
+--
+-- Input: pg_dump output with inherited tables
+-- Expected: Clean inheritance output
+--
+-- Note: Table inheritance is folded when --experimental-folding is NOT used
 
 -- Parent table
 CREATE TABLE public.users (

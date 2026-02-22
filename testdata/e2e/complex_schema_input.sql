@@ -1,5 +1,19 @@
--- Complex schema for E2E testing: 30 realistic production tables
--- Includes: tables, sequences, enums, composite types, views, functions, triggers, indexes, RLS
+-- Test fixture for complex schema (30 tables)
+-- Features tested:
+--   - Enums: Multiple enum types (user_status, account_type, order_status, etc.)
+--   - Sequences: Global sequence for ID generation
+--   - Tables: 30 production tables with various constraints
+--   - Foreign Keys: Self-referential, cascade, no action
+--   - Unique constraints: Single and multi-column
+--   - Check constraints: Positive values, etc.
+--   - Views: Regular and materialized views
+--   - Functions: Trigger functions, scalar functions
+--   - Triggers: BEFORE UPDATE triggers for updated_at
+--   - Indexes: Single and multi-column indexes
+--   - Row Level Security: RLS policies on tables
+--
+-- Input: pg_dump output with full production schema
+-- Expected: Clean, foldable schema output
 
 -- ============================================
 -- ENUMS
