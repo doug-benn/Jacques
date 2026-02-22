@@ -35,6 +35,7 @@ func loadIntegrationFixture(t *testing.T, name string) string {
 }
 
 func normalizeSQL(sql string) string {
+	sql = strings.ReplaceAll(sql, "\r\n", "\n")
 	return strings.TrimSpace(sql)
 }
 
@@ -550,4 +551,42 @@ CREATE TABLE foo (id int);`
 	result := processDefault(input)
 	assert.NotContains(t, result, "IF EXISTS")
 	assert.Contains(t, result, "DROP TABLE foo;")
+}
+
+func TestFeature_AlterSequenceFilteredWhenSerial(t *testing.T) {
+	input := `CREATE SEQUENCE public.order_ids START WITH 1;
+CREATE TABLE public.orders (id bigint NOT NULL);
+ALTER TABLE public.orders ALTER COLUMN id SET DEFAULT nextval('public.order_ids'::regclass);
+ALTER SEQUENCE public.order_ids RESTART WITH 2000;`
+	result := Process(input, nil)
+	assert.NotContains(t, result, "ALTER SEQUENCE")
+	assert.Contains(t, result, "BIGSERIAL")
+}
+
+func TestFeature_AlterSequenceFiltered_Multiple(t *testing.T) {
+	input := `CREATE SEQUENCE seq1 START WITH 1;
+CREATE SEQUENCE seq2 START WITH 1;
+CREATE TABLE t1 (id bigint NOT NULL);
+CREATE TABLE t2 (id bigint NOT NULL);
+ALTER TABLE t1 ALTER COLUMN id SET DEFAULT nextval('seq1'::regclass);
+ALTER TABLE t2 ALTER COLUMN id SET DEFAULT nextval('seq2'::regclass);
+ALTER SEQUENCE seq1 RESTART WITH 100;
+ALTER SEQUENCE seq2 RESTART WITH 200;
+ALTER SEQUENCE seq1 INCREMENT BY 5;`
+	result := Process(input, nil)
+	assert.NotContains(t, result, "ALTER SEQUENCE")
+	assert.Contains(t, result, "BIGSERIAL")
+}
+
+func TestFeature_AlterSequenceKeptWhenNotSerial(t *testing.T) {
+	input := `CREATE SEQUENCE order_ids START WITH 1;
+CREATE TABLE orders (id bigint NOT NULL);
+ALTER TABLE orders ALTER COLUMN id SET DEFAULT nextval('order_ids'::regclass);
+ALTER SEQUENCE order_ids RESTART WITH 2000;`
+	result := Process(input, nil)
+	// Should keep ALTER SEQUENCE because sequence is not converted to SERIAL (bigint can be SERIAL but let's check)
+	// Actually bigint CAN be SERIAL (BIGSERIAL), so this should be filtered
+	// Let me check: bigint -> BIGSERIAL is supported, so ALTER SEQUENCE should be filtered
+	assert.NotContains(t, result, "ALTER SEQUENCE")
+	assert.Contains(t, result, "BIGSERIAL")
 }

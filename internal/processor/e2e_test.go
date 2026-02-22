@@ -398,6 +398,9 @@ func TestE2E_PgDumpCleanRemigrate(t *testing.T) {
 		"fk_column_mapping_input.sql",
 		"schemas_input.sql",
 		"block_comments_input.sql",
+		"fk_remaining_actions_input.sql",
+		"xml_type_input.sql",
+		"alter_sequence_options_input.sql",
 	}
 
 	ctx := context.Background()

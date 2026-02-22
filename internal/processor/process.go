@@ -236,12 +236,14 @@ func Process(sql string, opts *Options) string {
 
 	// Collect sequences that should be kept (used by tables or standalone)
 	// These must be created before tables that reference them
+	// Also track sequences converted to SERIAL to filter ALTER SEQUENCE statements
 	var keptSequences []string
+	sequencesConvertedToSerial := make(map[string]bool)
 	for _, stmt := range passThroughs {
 		stripped := strings.TrimSpace(stmt)
 
 		if strings.HasPrefix(strings.ToUpper(stripped), "CREATE SEQUENCE") {
-			seqName := extractSequenceName(stripped)
+			seqName := extractSequenceName(stmt)
 			normalized := normalizeSequenceName(seqName)
 			keepSequence := false
 			usageCount := sequenceUsageCount[normalized]
@@ -267,6 +269,9 @@ func Process(sql string, opts *Options) string {
 
 			if keepSequence {
 				keptSequences = append(keptSequences, stmt)
+			} else {
+				// Sequence was converted to SERIAL, track it to filter ALTER SEQUENCE
+				sequencesConvertedToSerial[normalized] = true
 			}
 		}
 	}
@@ -304,6 +309,14 @@ func Process(sql string, opts *Options) string {
 			continue
 		}
 
+		// Skip ALTER SEQUENCE statements for sequences converted to SERIAL
+		if strings.HasPrefix(upper, "ALTER SEQUENCE") {
+			seqName := extractAlterSequenceName(stripped)
+			if seqName != "" && sequencesConvertedToSerial[normalizeSequenceName(seqName)] {
+				continue
+			}
+		}
+
 		output = append(output, stmt)
 	}
 
@@ -317,6 +330,19 @@ func extractSequenceName(stmt string) string {
 	m := re.FindStringSubmatch(stmt)
 	if m != nil {
 		return m[1]
+	}
+	return ""
+}
+
+func extractAlterSequenceName(stmt string) string {
+	re := regexp.MustCompile(`(?i)^ALTER\s+SEQUENCE\s+(?:IF\s+EXISTS\s+)?(?:([a-zA-Z_][a-zA-Z_0-9]*)\.)?([a-zA-Z_][a-zA-Z_0-9]*)`)
+	m := re.FindStringSubmatch(stmt)
+	if m != nil {
+		// m[1] is schema (optional), m[2] is sequence name
+		if m[1] != "" {
+			return m[1] + "." + m[2]
+		}
+		return m[2]
 	}
 	return ""
 }
