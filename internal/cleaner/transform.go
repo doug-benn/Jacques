@@ -226,7 +226,7 @@ func RenderTable(td *model.TableDef) string {
 	for i, col := range td.Columns {
 		sb.WriteString("    ")
 		sb.WriteString(renderColumn(col))
-		if i < len(td.Columns)-1 || len(td.TableConstraints) > 0 || td.TableLevelPK != "" || len(td.TableLevelUniques) > 0 || len(td.TableLevelFKs) > 0 {
+		if i < len(td.Columns)-1 || len(td.TableConstraints) > 0 || td.TableLevelPK != "" || len(td.TableLevelUniques) > 0 || len(td.TableLevelFKs) > 0 || len(td.TableExclusions) > 0 {
 			sb.WriteString(",")
 		}
 		sb.WriteString("\n")
@@ -236,7 +236,7 @@ func RenderTable(td *model.TableDef) string {
 		sb.WriteString("    PRIMARY KEY (")
 		sb.WriteString(td.TableLevelPK)
 		sb.WriteString(")")
-		if len(td.TableConstraints) > 0 || len(td.TableLevelUniques) > 0 || len(td.TableLevelFKs) > 0 {
+		if len(td.TableConstraints) > 0 || len(td.TableLevelUniques) > 0 || len(td.TableLevelFKs) > 0 || len(td.TableExclusions) > 0 {
 			sb.WriteString(",")
 		}
 		sb.WriteString("\n")
@@ -246,7 +246,7 @@ func RenderTable(td *model.TableDef) string {
 		sb.WriteString("    UNIQUE (")
 		sb.WriteString(u)
 		sb.WriteString(")")
-		if i < len(td.TableLevelUniques)-1 || len(td.TableConstraints) > 0 || len(td.TableLevelFKs) > 0 {
+		if i < len(td.TableLevelUniques)-1 || len(td.TableConstraints) > 0 || len(td.TableLevelFKs) > 0 || len(td.TableExclusions) > 0 {
 			sb.WriteString(",")
 		}
 		sb.WriteString("\n")
@@ -255,7 +255,7 @@ func RenderTable(td *model.TableDef) string {
 	for i, c := range td.TableConstraints {
 		sb.WriteString("    ")
 		sb.WriteString(c)
-		if i < len(td.TableConstraints)-1 || len(td.TableLevelFKs) > 0 {
+		if i < len(td.TableConstraints)-1 || len(td.TableLevelFKs) > 0 || len(td.TableExclusions) > 0 {
 			sb.WriteString(",")
 		}
 		sb.WriteString("\n")
@@ -264,7 +264,16 @@ func RenderTable(td *model.TableDef) string {
 	for i, fk := range td.TableLevelFKs {
 		sb.WriteString("    ")
 		sb.WriteString(fk)
-		if i < len(td.TableLevelFKs)-1 {
+		if i < len(td.TableLevelFKs)-1 || len(td.TableExclusions) > 0 {
+			sb.WriteString(",")
+		}
+		sb.WriteString("\n")
+	}
+
+	for i, ex := range td.TableExclusions {
+		sb.WriteString("    ")
+		sb.WriteString(ex)
+		if i < len(td.TableExclusions)-1 {
 			sb.WriteString(",")
 		}
 		sb.WriteString("\n")

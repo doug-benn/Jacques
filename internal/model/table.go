@@ -12,6 +12,7 @@ type TableDef struct {
 	TableLevelPK      string
 	TableLevelUniques []string
 	TableLevelFKs     []string
+	TableExclusions   []string
 }
 
 type ColumnDef struct {

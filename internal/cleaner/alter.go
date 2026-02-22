@@ -30,6 +30,7 @@ var addColumnRE = regexp.MustCompile(`^ALTER\s+TABLE\s+(?:ONLY\s+)?(?:([a-zA-Z_]
 var dropDefaultRE = regexp.MustCompile(`^ALTER\s+TABLE\s+(?:ONLY\s+)?(?:([a-zA-Z_][a-zA-Z_0-9]*)\.)?([a-zA-Z_][a-zA-Z_0-9]*)\s+ALTER\s+COLUMN\s+([a-zA-Z_][a-zA-Z_0-9]*)\s+DROP\s+DEFAULT\b`)
 var alterNextvalRE = regexp.MustCompile(`nextval\('([^']+)'`)
 var addConstraintRE = regexp.MustCompile(`^ADD\s+`)
+var addExcludeRE = regexp.MustCompile(`^ALTER\s+TABLE\s+(?:ONLY\s+)?(?:([a-zA-Z_][a-zA-Z_0-9]*)\.)?([a-zA-Z_][a-zA-Z_0-9]*)\s+ADD\s+CONSTRAINT\s+(\S+)\s+EXCLUDE\s+(.+)`)
 
 func FindTable(tables map[string]*model.TableDef, schema, name string) *model.TableDef {
 	key := ""
@@ -264,6 +265,16 @@ func RouteAlter(stmt string, tables map[string]*model.TableDef) *string {
 			}
 		}
 		return &stmt
+	}
+
+	if m := addExcludeRE.FindStringSubmatch(stripped); m != nil {
+		schema, tname, constraintName, excludeDef := m[1], m[2], m[3], m[4]
+		td := FindTable(tables, schema, tname)
+		if td != nil {
+			excludeDef = addConstraintRE.ReplaceAllString(excludeDef, "")
+			td.TableExclusions = append(td.TableExclusions, "CONSTRAINT "+constraintName+" EXCLUDE "+strings.TrimSuffix(excludeDef, ";"))
+		}
+		return nil
 	}
 
 	return &stmt
