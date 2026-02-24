@@ -156,6 +156,13 @@ func TestIntegration_IfExistsForDrop(t *testing.T) {
 	assert.Equal(t, normalizeSQL(expected), normalizeSQL(result))
 }
 
+func TestIntegration_OnlyRemoval(t *testing.T) {
+	input := loadTestFixture(t, "only_removal_input.sql")
+	expected := loadTestFixture(t, "only_removal_expected.sql")
+	result := processDefault(input)
+	assert.Equal(t, normalizeSQL(expected), normalizeSQL(result))
+}
+
 func TestGating_DomainTypesSkippedByDefault(t *testing.T) {
 	input := loadIntegrationFixture(t, "domain_types_input.sql")
 	result := processDefault(input)
