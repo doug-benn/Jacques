@@ -402,6 +402,7 @@ func TestE2E_PgDumpCleanRemigrate(t *testing.T) {
 		"xml_type_input.sql",
 		"alter_sequence_options_input.sql",
 		"only_removal_input.sql",
+		"quoted_identifiers_input.sql",
 	}
 
 	ctx := context.Background()

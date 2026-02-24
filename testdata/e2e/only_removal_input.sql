@@ -11,8 +11,8 @@ CREATE TABLE public.users (
 );
 
 -- ALTER statements that pass through unchanged - ONLY should be removed
-ALTER TABLE ONLY public.users VALIDATE CONSTRAINT some_constraint;
+ALTER TABLE ONLY public.users ADD COLUMN new_col int;
 
-ALTER TABLE ONLY public.users RENAME TO public.new_users;
+ALTER TABLE ONLY public.users RENAME TO new_users;
 
 ALTER TABLE ONLY public.new_users RENAME COLUMN name TO user_name;

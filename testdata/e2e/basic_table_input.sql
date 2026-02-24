@@ -1,6 +1,6 @@
 -- Test fixture for basic table consolidation
 -- Features tested:
---   - Noise removal: SET, OWNER TO, COMMENT
+--   - Noise removal: SET, GRANT, REVOKE, COMMENT
 --   - Sequence → SERIAL: sequence converted to BIGSERIAL
 --   - ALTER folding: PK, UNIQUE constraints folded into CREATE TABLE
 --   - ONLY removal: ALTER TABLE ONLY → ALTER TABLE

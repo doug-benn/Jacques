@@ -6,7 +6,7 @@ import (
 )
 
 var noisePatterns = []*regexp.Regexp{
-	regexp.MustCompile(`^SET\s+\w`),
+	regexp.MustCompile(`^SET\s+\w+`),
 	regexp.MustCompile(`^SELECT\s+pg_catalog\.`),
 	regexp.MustCompile(`^GRANT\s+`),
 	regexp.MustCompile(`^REVOKE\s+`),

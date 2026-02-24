@@ -1,10 +1,9 @@
 CREATE TABLE public.users (
     id bigint NOT NULL,
-    name text
+    name text,
+    new_col int
 );
 
-ALTER TABLE public.users VALIDATE CONSTRAINT some_constraint;
-
-ALTER TABLE public.users RENAME TO public.new_users;
+ALTER TABLE public.users RENAME TO new_users;
 
 ALTER TABLE public.new_users RENAME COLUMN name TO user_name;
