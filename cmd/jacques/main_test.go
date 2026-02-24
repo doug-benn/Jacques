@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
+	"errors"
+	"flag"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -11,8 +13,48 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func getProjectRoot() string {
-	return filepath.Join("..", "..")
+func TestParseFlags_Defaults(t *testing.T) {
+	input, output, version, experimentalFolding, err := parseFlags([]string{})
+	require.NoError(t, err)
+	assert.Equal(t, "-", input)
+	assert.Equal(t, "-", output)
+	assert.False(t, version)
+	assert.False(t, experimentalFolding)
+}
+
+func TestParseFlags_ShortFlags(t *testing.T) {
+	input, output, version, experimentalFolding, err := parseFlags([]string{"-i", "in.sql", "-o", "out.sql", "-v", "-experimental-folding"})
+	require.NoError(t, err)
+	assert.Equal(t, "in.sql", input)
+	assert.Equal(t, "out.sql", output)
+	assert.True(t, version)
+	assert.True(t, experimentalFolding)
+}
+
+func TestParseFlags_LongFlags(t *testing.T) {
+	input, output, version, experimentalFolding, err := parseFlags([]string{"--input", "in.sql", "--output", "out.sql", "--version", "--experimental-folding"})
+	require.NoError(t, err)
+	assert.Equal(t, "in.sql", input)
+	assert.Equal(t, "out.sql", output)
+	assert.True(t, version)
+	assert.True(t, experimentalFolding)
+}
+
+func TestParseFlags_UnknownFlag(t *testing.T) {
+	_, _, _, _, err := parseFlags([]string{"--unknown"})
+	assert.Error(t, err)
+}
+
+func TestCLI_HelpFlag(t *testing.T) {
+	_, _, _, _, err := parseFlags([]string{"-h"})
+	assert.Error(t, err)
+	assert.True(t, errors.Is(err, flag.ErrHelp))
+}
+
+func TestCLI_VersionFlag(t *testing.T) {
+	_, _, version, _, err := parseFlags([]string{"-v"})
+	require.NoError(t, err)
+	assert.True(t, version)
 }
 
 func TestCLI_FileInput(t *testing.T) {
@@ -21,119 +63,36 @@ func TestCLI_FileInput(t *testing.T) {
 	err := os.WriteFile(inputFile, []byte("CREATE TABLE foo (id int);"), 0644)
 	require.NoError(t, err)
 
-	bin := filepath.Join(getProjectRoot(), "jacques.exe")
-	if _, err := os.Stat(bin); err != nil {
-		t.Skip("Binary not found, skipping CLI test")
-	}
-
-	cmd := exec.Command(bin, "-i", inputFile)
-	output, err := cmd.CombinedOutput()
-	require.NoError(t, err, string(output))
-	assert.Contains(t, string(output), "CREATE TABLE foo")
+	var output bytes.Buffer
+	err = run(inputFile, "-", false, nil, &output)
+	require.NoError(t, err)
+	assert.Contains(t, output.String(), "CREATE TABLE foo")
 }
 
 func TestCLI_MissingInputFile(t *testing.T) {
-	bin := filepath.Join(getProjectRoot(), "jacques.exe")
-	if _, err := os.Stat(bin); err != nil {
-		t.Skip("Binary not found, skipping CLI test")
-	}
-
-	cmd := exec.Command(bin, "-i", "nonexistent.sql")
-	output, err := cmd.CombinedOutput()
-	assert.NotZero(t, err)
-	assert.Contains(t, string(output), "Error")
-}
-
-func TestCLI_HelpFlag(t *testing.T) {
-	bin := filepath.Join(getProjectRoot(), "jacques.exe")
-	if _, err := os.Stat(bin); err != nil {
-		t.Skip("Binary not found, skipping CLI test")
-	}
-
-	tests := []struct {
-		name string
-		args []string
-	}{
-		{"short flag", []string{"-h"}},
-		{"long flag", []string{"--help"}},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			cmd := exec.Command(bin, tt.args...)
-			output, err := cmd.CombinedOutput()
-			assert.Zero(t, err, string(output))
-			assert.Contains(t, string(output), "Input file")
-			assert.Contains(t, string(output), "Output file")
-		})
-	}
+	var output bytes.Buffer
+	err := run("nonexistent.sql", "-", false, nil, &output)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "nonexistent.sql")
 }
 
 func TestCLI_EmptyInput(t *testing.T) {
-	// Note: This tests the "empty data" path, not the terminal detection path.
-	// When cmd.Stdin = nil, the subprocess stdin becomes /dev/null which is NOT a
-	// terminal, so the terminal check fails and it falls through to reading empty data.
-	// Both paths result in the same error message, so this test still validates
-	// that no input produces an error.
-	bin := filepath.Join(getProjectRoot(), "jacques.exe")
-	if _, err := os.Stat(bin); err != nil {
-		t.Skip("Binary not found, skipping CLI test")
-	}
-
-	cmd := exec.Command(bin)
-	cmd.Stdin = nil
-	output, err := cmd.CombinedOutput()
-	assert.NotZero(t, err)
-	assert.Contains(t, string(output), "Error: no input specified")
-	assert.Contains(t, string(output), "Input file")
-	assert.Contains(t, string(output), "Output file")
+	var output bytes.Buffer
+	err := run("-", "-", false, strings.NewReader(""), &output)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "no input specified")
 }
 
 func TestCLI_PipedInput(t *testing.T) {
-	bin := filepath.Join(getProjectRoot(), "jacques.exe")
-	if _, err := os.Stat(bin); err != nil {
-		t.Skip("Binary not found, skipping CLI test")
-	}
-
 	input := "CREATE TABLE foo (id int);"
-	cmd := exec.Command(bin)
-	cmd.Stdin = strings.NewReader(input)
-	output, err := cmd.CombinedOutput()
-	require.NoError(t, err, string(output))
-	assert.Contains(t, string(output), "CREATE TABLE foo")
-	assert.Contains(t, string(output), "id int")
-}
-
-func TestCLI_VersionFlag(t *testing.T) {
-	bin := filepath.Join(getProjectRoot(), "jacques.exe")
-	if _, err := os.Stat(bin); err != nil {
-		t.Skip("Binary not found, skipping CLI test")
-	}
-
-	tests := []struct {
-		name string
-		args []string
-	}{
-		{"short flag", []string{"-v"}},
-		{"long flag", []string{"--version"}},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			cmd := exec.Command(bin, tt.args...)
-			output, err := cmd.CombinedOutput()
-			assert.Zero(t, err, string(output))
-			assert.Contains(t, string(output), "Jacques")
-		})
-	}
+	var output bytes.Buffer
+	err := run("-", "-", false, strings.NewReader(input), &output)
+	require.NoError(t, err)
+	assert.Contains(t, output.String(), "CREATE TABLE foo")
+	assert.Contains(t, output.String(), "id int")
 }
 
 func TestCLI_OutputFlag(t *testing.T) {
-	bin := filepath.Join(getProjectRoot(), "jacques.exe")
-	if _, err := os.Stat(bin); err != nil {
-		t.Skip("Binary not found, skipping CLI test")
-	}
-
 	tmpDir := t.TempDir()
 	inputFile := filepath.Join(tmpDir, "input.sql")
 	outputFile := filepath.Join(tmpDir, "output.sql")
@@ -141,8 +100,7 @@ func TestCLI_OutputFlag(t *testing.T) {
 	err := os.WriteFile(inputFile, []byte("CREATE TABLE bar (id int);"), 0644)
 	require.NoError(t, err)
 
-	cmd := exec.Command(bin, "-i", inputFile, "-o", outputFile)
-	_, err = cmd.CombinedOutput()
+	err = run(inputFile, outputFile, false, nil, nil)
 	require.NoError(t, err)
 
 	output, err := os.ReadFile(outputFile)
@@ -151,42 +109,26 @@ func TestCLI_OutputFlag(t *testing.T) {
 }
 
 func TestCLI_EmptyFile(t *testing.T) {
-	bin := filepath.Join(getProjectRoot(), "jacques.exe")
-	if _, err := os.Stat(bin); err != nil {
-		t.Skip("Binary not found, skipping CLI test")
-	}
-
 	tmpDir := t.TempDir()
 	emptyFile := filepath.Join(tmpDir, "empty.sql")
 	err := os.WriteFile(emptyFile, []byte(""), 0644)
 	require.NoError(t, err)
 
-	cmd := exec.Command(bin, "-i", emptyFile)
-	output, err := cmd.CombinedOutput()
-	assert.NotZero(t, err)
-	assert.Contains(t, string(output), "Error: no input specified")
+	var output bytes.Buffer
+	err = run(emptyFile, "-", false, nil, &output)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "no input specified")
 }
 
 func TestCLI_ExplicitStdin(t *testing.T) {
-	bin := filepath.Join(getProjectRoot(), "jacques.exe")
-	if _, err := os.Stat(bin); err != nil {
-		t.Skip("Binary not found, skipping CLI test")
-	}
-
 	input := "CREATE TABLE baz (id int);"
-	cmd := exec.Command(bin, "-i", "-")
-	cmd.Stdin = strings.NewReader(input)
-	output, err := cmd.CombinedOutput()
-	require.NoError(t, err, string(output))
-	assert.Contains(t, string(output), "CREATE TABLE baz")
+	var output bytes.Buffer
+	err := run("-", "-", false, strings.NewReader(input), &output)
+	require.NoError(t, err)
+	assert.Contains(t, output.String(), "CREATE TABLE baz")
 }
 
 func TestCLI_CombinedFlags(t *testing.T) {
-	bin := filepath.Join(getProjectRoot(), "jacques.exe")
-	if _, err := os.Stat(bin); err != nil {
-		t.Skip("Binary not found, skipping CLI test")
-	}
-
 	tmpDir := t.TempDir()
 	inputFile := filepath.Join(tmpDir, "input.sql")
 	outputFile := filepath.Join(tmpDir, "output.sql")
@@ -194,8 +136,7 @@ func TestCLI_CombinedFlags(t *testing.T) {
 	err := os.WriteFile(inputFile, []byte("CREATE TABLE qux (id int); CREATE INDEX idx_qux ON qux(id);"), 0644)
 	require.NoError(t, err)
 
-	cmd := exec.Command(bin, "--input", inputFile, "--output", outputFile)
-	_, err = cmd.CombinedOutput()
+	err = run(inputFile, outputFile, false, nil, nil)
 	require.NoError(t, err)
 
 	output, err := os.ReadFile(outputFile)
@@ -204,64 +145,37 @@ func TestCLI_CombinedFlags(t *testing.T) {
 	assert.Contains(t, string(output), "CREATE INDEX")
 }
 
-func TestCLI_ExperimentalFoldingFlag_DomainTypes(t *testing.T) {
-	bin := filepath.Join(getProjectRoot(), "jacques.exe")
-	if _, err := os.Stat(bin); err != nil {
-		t.Skip("Binary not found, skipping CLI test")
-	}
-
+func TestCLI_ExperimentalFoldingFlag_Default(t *testing.T) {
 	input := "CREATE TABLE public.users (id int, email public.email); CREATE DOMAIN public.email AS text;"
-
-	cmd := exec.Command(bin)
-	cmd.Stdin = strings.NewReader(input)
-	output, err := cmd.CombinedOutput()
+	var output bytes.Buffer
+	err := run("-", "-", false, strings.NewReader(input), &output)
 	require.NoError(t, err)
-	assert.NotContains(t, string(output), "CREATE DOMAIN")
-	assert.Contains(t, string(output), "email public.email")
+	assert.NotContains(t, output.String(), "CREATE DOMAIN")
+	assert.Contains(t, output.String(), "email public.email")
 }
 
-func TestCLI_ExperimentalFoldingFlag_PartitionChildren(t *testing.T) {
-	bin := filepath.Join(getProjectRoot(), "jacques.exe")
-	if _, err := os.Stat(bin); err != nil {
-		t.Skip("Binary not found, skipping CLI test")
-	}
-
-	input := "CREATE TABLE public.orders (id int) PARTITION BY RANGE (id); CREATE TABLE public.orders_2024 PARTITION OF public.orders FOR VALUES FROM (MINVALUE) TO (2025);"
-
-	cmd := exec.Command(bin)
-	cmd.Stdin = strings.NewReader(input)
-	output, err := cmd.CombinedOutput()
-	require.NoError(t, err)
-	assert.NotContains(t, string(output), "PARTITION OF")
-	assert.Contains(t, string(output), "PARTITION BY RANGE")
-}
-
-func TestCLI_ExperimentalFoldingFlag_WithFlag_DomainTypes(t *testing.T) {
-	bin := filepath.Join(getProjectRoot(), "jacques.exe")
-	if _, err := os.Stat(bin); err != nil {
-		t.Skip("Binary not found, skipping CLI test")
-	}
-
+func TestCLI_ExperimentalFoldingFlag_Enabled(t *testing.T) {
 	input := "CREATE TABLE public.users (id int, email public.email); CREATE DOMAIN public.email AS text;"
-
-	cmd := exec.Command(bin, "--experimental-folding")
-	cmd.Stdin = strings.NewReader(input)
-	output, err := cmd.CombinedOutput()
+	var output bytes.Buffer
+	err := run("-", "-", true, strings.NewReader(input), &output)
 	require.NoError(t, err)
-	assert.Contains(t, string(output), "CREATE DOMAIN")
+	assert.Contains(t, output.String(), "CREATE DOMAIN")
 }
 
-func TestCLI_ExperimentalFoldingFlag_WithFlag_PartitionChildren(t *testing.T) {
-	bin := filepath.Join(getProjectRoot(), "jacques.exe")
-	if _, err := os.Stat(bin); err != nil {
-		t.Skip("Binary not found, skipping CLI test")
-	}
-
+func TestCLI_PartitionChildren_Default(t *testing.T) {
 	input := "CREATE TABLE public.orders (id int) PARTITION BY RANGE (id); CREATE TABLE public.orders_2024 PARTITION OF public.orders FOR VALUES FROM (MINVALUE) TO (2025);"
-
-	cmd := exec.Command(bin, "--experimental-folding")
-	cmd.Stdin = strings.NewReader(input)
-	output, err := cmd.CombinedOutput()
+	var output bytes.Buffer
+	err := run("-", "-", false, strings.NewReader(input), &output)
 	require.NoError(t, err)
-	assert.Contains(t, string(output), "PARTITION OF")
+	assert.NotContains(t, output.String(), "PARTITION OF")
+	assert.Contains(t, output.String(), "PARTITION BY RANGE")
+}
+
+func TestCLI_PartitionChildren_ExperimentalFolding(t *testing.T) {
+	input := "CREATE TABLE public.orders (id int) PARTITION BY RANGE (id); CREATE TABLE public.orders_2024 PARTITION OF public.orders FOR VALUES FROM (MINVALUE) TO (2025);"
+	var output bytes.Buffer
+	err := run("-", "-", true, strings.NewReader(input), &output)
+	require.NoError(t, err)
+	assert.Contains(t, output.String(), "PARTITION OF")
+	assert.Contains(t, output.String(), "PARTITION BY RANGE")
 }

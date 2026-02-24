@@ -10,86 +10,107 @@ import (
 	"github.com/doug-benn/Jacques/internal/processor"
 )
 
-func main() {
-	var input string
-	var output string
-	var version bool
-	var experimentalFolding bool
-	flag.StringVar(&input, "i", "-", "Input file (default: stdin)")
-	flag.StringVar(&input, "input", "-", "Input file (default: stdin)")
-	flag.StringVar(&output, "o", "-", "Output file (default: stdout)")
-	flag.StringVar(&output, "output", "-", "Output file (default: stdout)")
-	flag.BoolVar(&version, "version", false, "Print version information")
-	flag.BoolVar(&version, "v", false, "Print version information")
-	flag.BoolVar(&experimentalFolding, "experimental-folding", false, "Enable features not covered by E2E tests (partitioned tables, domain types, inheritance) - please check output carefully")
+func parseFlags(args []string) (input, output string, version, experimentalFolding bool, err error) {
+	fs := flag.NewFlagSet("jacques", flag.ContinueOnError)
+	fs.SetOutput(&strings.Builder{})
 
-	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Jacques %s\n\n", Version)
-		fmt.Fprintf(os.Stderr, "Usage: jacques [options]\n\n")
-		fmt.Fprintf(os.Stderr, "Options:\n")
-		flag.PrintDefaults()
+	fs.StringVar(&input, "i", "-", "Input file (default: stdin)")
+	fs.StringVar(&input, "input", "-", "Input file (default: stdin)")
+	fs.StringVar(&output, "o", "-", "Output file (default: stdout)")
+	fs.StringVar(&output, "output", "-", "Output file (default: stdout)")
+	fs.BoolVar(&version, "version", false, "Print version information")
+	fs.BoolVar(&version, "v", false, "Print version information")
+	fs.BoolVar(&experimentalFolding, "experimental-folding", false, "Enable features not covered by E2E tests")
+
+	err = fs.Parse(args)
+	if err != nil {
+		return "", "", false, false, err
 	}
 
-	flag.Parse()
+	return input, output, version, experimentalFolding, nil
+}
+
+func run(input, output string, experimentalFolding bool, in io.Reader, out io.Writer) error {
+	var r io.Reader
+
+	if input == "-" && in != nil {
+		r = in
+	} else if input == "-" {
+		stat, err := os.Stdin.Stat()
+		if err == nil && (stat.Mode()&os.ModeCharDevice) != 0 {
+			return fmt.Errorf("no input specified")
+		}
+		r = os.Stdin
+	} else {
+		f, err := os.Open(input)
+		if err != nil {
+			return fmt.Errorf("opening input file %q: %w", input, err)
+		}
+		defer func() { _ = f.Close() }()
+		r = f
+	}
+
+	var w io.Writer
+	if output == "-" && out != nil {
+		w = out
+	} else if output == "-" {
+		w = os.Stdout
+	} else {
+		f, err := os.Create(output)
+		if err != nil {
+			return fmt.Errorf("creating output file %q: %w", output, err)
+		}
+		defer func() { _ = f.Close() }()
+		w = f
+	}
+
+	data, err := io.ReadAll(r)
+	if err != nil {
+		return fmt.Errorf("reading input: %w", err)
+	}
+
+	if len(strings.TrimSpace(string(data))) == 0 {
+		return fmt.Errorf("no input specified")
+	}
+
+	opts := &processor.Options{ExperimentalFolding: experimentalFolding}
+	result := processor.Process(string(data), opts)
+
+	_, err = fmt.Fprintln(w, result)
+	if err != nil {
+		return fmt.Errorf("writing output: %w", err)
+	}
+
+	return nil
+}
+
+func main() {
+	input, output, version, experimentalFolding, err := parseFlags(os.Args[1:])
+	if err != nil {
+		if err == flag.ErrHelp {
+			printUsage()
+			os.Exit(0)
+		}
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		printUsage()
+		os.Exit(1)
+	}
 
 	if version {
 		fmt.Printf("Jacques %s\n", Version)
 		os.Exit(0)
 	}
 
-	var in io.Reader
-	var out io.Writer
-
-	if input == "-" {
-		// Check if stdin is a terminal (interactive) - if so, show error since
-		// there's no way to provide input interactively
-		stat, err := os.Stdin.Stat()
-		if err == nil && (stat.Mode()&os.ModeCharDevice) != 0 {
-			fmt.Fprintf(os.Stderr, "Error: no input specified\n")
-			flag.Usage()
-			os.Exit(1)
-		}
-		in = os.Stdin
-	} else {
-		f, err := os.Open(input)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", fmt.Errorf("opening input file %q: %w", input, err))
-			os.Exit(1)
-		}
-		defer func() { _ = f.Close() }()
-		in = f
-	}
-
-	if output == "-" {
-		out = os.Stdout
-	} else {
-		f, err := os.Create(output)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", fmt.Errorf("creating output file %q: %w", output, err))
-			os.Exit(1)
-		}
-		defer func() { _ = f.Close() }()
-		out = f
-	}
-
-	data, err := io.ReadAll(in)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", fmt.Errorf("reading input: %w", err))
+	if err := run(input, output, experimentalFolding, os.Stdin, os.Stdout); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		printUsage()
 		os.Exit(1)
 	}
+}
 
-	if len(strings.TrimSpace(string(data))) == 0 {
-		fmt.Fprintf(os.Stderr, "Error: no input specified\n")
-		flag.Usage()
-		os.Exit(1)
-	}
-
-	opts := &processor.Options{ExperimentalFolding: experimentalFolding}
-	result := processor.Process(string(data), opts)
-
-	_, err = fmt.Fprintln(out, result)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", fmt.Errorf("writing output: %w", err))
-		os.Exit(1)
-	}
+func printUsage() {
+	fmt.Fprintf(os.Stderr, "Jacques %s\n\n", Version)
+	fmt.Fprintf(os.Stderr, "Usage: jacques [options]\n\n")
+	fmt.Fprintf(os.Stderr, "Options:\n")
+	flag.PrintDefaults()
 }
