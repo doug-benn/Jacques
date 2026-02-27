@@ -131,7 +131,7 @@ func TestMain(m *testing.M) {
 
 // buildBinary builds the jacques binary from source.
 func buildBinary() error {
-	cmd := exec.Command("go", "build", "-o", binaryName, "./cmd/jacques")
+	cmd := exec.Command("go", "build", "-o", binaryName, ".")
 	cmd.Dir = filepath.Join("..", "..")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
