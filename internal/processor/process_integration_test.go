@@ -1,295 +1,653 @@
 package processor
 
 import (
-	"strings"
 	"testing"
 
+	"github.com/doug-benn/Jacques/internal/model"
 	"github.com/stretchr/testify/assert"
 )
 
-func TestIntegration_Passthrough_DropTableIfExists(t *testing.T) {
-	sql := "DROP TABLE IF EXISTS foo;"
-	result := processDefault(sql)
-	assert.Contains(t, result, "DROP TABLE IF EXISTS foo")
-}
-
-func TestIntegration_Passthrough_CreateSequence(t *testing.T) {
-	sql := "CREATE SEQUENCE foo_seq;"
-	result := processDefault(sql)
-	assert.Contains(t, result, "CREATE SEQUENCE foo_seq")
-}
-
-func TestIntegration_Passthrough_CreateIndex(t *testing.T) {
-	sql := "CREATE INDEX idx ON foo (bar);"
-	result := processDefault(sql)
-	assert.Contains(t, result, "CREATE INDEX idx ON foo")
-}
-
-func TestIntegration_Passthrough_CreateType(t *testing.T) {
-	sql := "CREATE TYPE foo_type AS ENUM ('a', 'b');"
-	result := processDefault(sql)
-	assert.Contains(t, result, "CREATE TYPE foo_type")
-}
-
-func TestIntegration_FK_WithCascadeActions(t *testing.T) {
-	input := `
-CREATE TABLE users (id bigint NOT NULL);
-CREATE TABLE orders (id bigint NOT NULL, user_id bigint NOT NULL);
-ALTER TABLE orders ADD CONSTRAINT orders_user_fkey FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
-`
-	result := processDefault(input)
-	assert.Contains(t, result, "ON DELETE CASCADE")
-	assert.Contains(t, result, "REFERENCES users(id) ON DELETE CASCADE")
-}
-
-func TestIntegration_FK_WithMultipleActions(t *testing.T) {
-	input := `
-CREATE TABLE users (id bigint NOT NULL);
-CREATE TABLE posts (id bigint NOT NULL, author_id bigint NOT NULL);
-ALTER TABLE posts ADD CONSTRAINT posts_author_fkey FOREIGN KEY (author_id) REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE;
-`
-	result := processDefault(input)
-	assert.Contains(t, result, "ON DELETE RESTRICT")
-	assert.Contains(t, result, "ON UPDATE CASCADE")
-}
-
-func TestIntegration_Feature_BlockCommentRemoval(t *testing.T) {
-	input := `/* This is a block comment */ CREATE TABLE foo (id int); /* Another block */`
-	result := processDefault(input)
-	assert.NotContains(t, result, "/*")
-	assert.NotContains(t, result, "*/")
-	assert.Contains(t, result, "CREATE TABLE foo")
-}
-
-func TestIntegration_Feature_BlockCommentRemoval_Multiline(t *testing.T) {
-	input := `/* 
-		Multi-line 
-		block comment 
-	*/ 
-	CREATE TABLE bar (id int);`
-	result := processDefault(input)
-	assert.NotContains(t, result, "/*")
-	assert.NotContains(t, result, "Multi-line")
-	assert.Contains(t, result, "CREATE TABLE bar")
-}
-
-func TestIntegration_Feature_IfExistsForDrop(t *testing.T) {
-	input := `DROP TABLE foo;
-CREATE TABLE foo (id int);`
-	result := processExperimental(input)
-	assert.Contains(t, result, "DROP TABLE IF EXISTS foo")
-	assert.NotContains(t, result, "DROP TABLE foo;")
-}
-
-func TestIntegration_Feature_IfExistsForDrop_AlreadyExists(t *testing.T) {
-	input := `DROP TABLE IF EXISTS foo;
-CREATE TABLE foo (id int);`
-	result := processExperimental(input)
-	assert.Contains(t, result, "DROP TABLE IF EXISTS foo")
-}
-
-func TestIntegration_Feature_IfExistsForDrop_Index(t *testing.T) {
-	input := `DROP INDEX idx_foo;
-CREATE INDEX idx_foo ON foo(id);`
-	result := processExperimental(input)
-	assert.Contains(t, result, "DROP INDEX IF EXISTS idx_foo")
-}
-
-func TestIntegration_Feature_AlterSequenceFilteredWhenSerial(t *testing.T) {
-	input := `CREATE SEQUENCE public.order_ids START WITH 1;
-CREATE TABLE public.orders (id bigint NOT NULL);
-ALTER TABLE public.orders ALTER COLUMN id SET DEFAULT nextval('public.order_ids'::regclass);
-ALTER SEQUENCE public.order_ids RESTART WITH 2000;`
-	result := Process(input, nil)
-	assert.NotContains(t, result, "ALTER SEQUENCE")
-	assert.Contains(t, result, "BIGSERIAL")
-}
-
-func TestIntegration_Feature_AlterSequenceFiltered_Multiple(t *testing.T) {
-	input := `CREATE SEQUENCE seq1 START WITH 1;
-CREATE SEQUENCE seq2 START WITH 1;
-CREATE TABLE t1 (id bigint NOT NULL);
-CREATE TABLE t2 (id bigint NOT NULL);
-ALTER TABLE t1 ALTER COLUMN id SET DEFAULT nextval('seq1'::regclass);
-ALTER TABLE t2 ALTER COLUMN id SET DEFAULT nextval('seq2'::regclass);
-ALTER SEQUENCE seq1 RESTART WITH 100;
-ALTER SEQUENCE seq2 RESTART WITH 200;
-ALTER SEQUENCE seq1 INCREMENT BY 5;`
-	result := Process(input, nil)
-	assert.NotContains(t, result, "ALTER SEQUENCE")
-	assert.Contains(t, result, "BIGSERIAL")
-}
-
-func TestIntegration_Feature_AlterSequenceKeptWhenNotSerial(t *testing.T) {
-	input := `CREATE SEQUENCE order_ids START WITH 1;
-CREATE TABLE orders (id bigint NOT NULL);
-ALTER TABLE orders ALTER COLUMN id SET DEFAULT nextval('order_ids'::regclass);
-ALTER SEQUENCE order_ids RESTART WITH 2000;`
-	result := Process(input, nil)
-	assert.NotContains(t, result, "ALTER SEQUENCE")
-	assert.Contains(t, result, "BIGSERIAL")
-}
-
-func TestIntegration_EdgeCases_EmptyAndComments(t *testing.T) {
+func TestIntegration_ExtractSequenceName(t *testing.T) {
 	tests := []struct {
-		name     string
-		input    string
-		expected string
+		name string
+		stmt string
+		want string
 	}{
 		{
-			name:     "empty input",
-			input:    "",
-			expected: "",
+			name: "basic sequence",
+			stmt: "CREATE SEQUENCE x;",
+			want: "x",
 		},
 		{
-			name:     "only whitespace",
-			input:    "   \n\t\n   ",
-			expected: "",
+			name: "sequence with schema",
+			stmt: "CREATE SEQUENCE public.x;",
+			want: "public.x",
 		},
 		{
-			name:     "only line comments",
-			input:    "-- comment\n-- another comment",
-			expected: "",
+			name: "sequence with IF NOT EXISTS",
+			stmt: "CREATE SEQUENCE IF NOT EXISTS x;",
+			want: "x",
 		},
 		{
-			name:     "only block comment",
-			input:    "/* this is a block comment */",
-			expected: "",
+			name: "sequence with schema and IF NOT EXISTS",
+			stmt: "CREATE SEQUENCE IF NOT EXISTS public.x;",
+			want: "public.x",
 		},
 		{
-			name:     "mixed comments and whitespace",
-			input:    "-- header\n\n/* body */\n\nSELECT 1;",
-			expected: "SELECT 1;",
+			name: "not a sequence",
+			stmt: "CREATE TABLE x (id int);",
+			want: "",
+		},
+		{
+			name: "empty string",
+			stmt: "",
+			want: "",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := processDefault(tt.input)
-			assert.Equal(t, tt.expected, strings.TrimSpace(result))
+			result := extractSequenceName(tt.stmt)
+			assert.Equal(t, tt.want, result)
 		})
 	}
 }
 
-func TestIntegration_PreprocessSQL(t *testing.T) {
+func TestIntegration_ExtractAlterSequenceName(t *testing.T) {
 	tests := []struct {
-		name     string
-		input    string
-		expected string
+		name string
+		stmt string
+		want string
 	}{
 		{
-			name:     "block comments removed",
-			input:    "/* comment */ SELECT 1;",
-			expected: " SELECT 1;\n",
+			name: "basic alter sequence",
+			stmt: "ALTER SEQUENCE x;",
+			want: "x",
 		},
 		{
-			name:     "line comments removed",
-			input:    "-- comment\nSELECT 1;",
-			expected: "SELECT 1;\n",
+			name: "alter sequence with schema",
+			stmt: "ALTER SEQUENCE public.x;",
+			want: "public.x",
 		},
 		{
-			name:     "mixed comments removed",
-			input:    "/* block */ SELECT 1; -- line",
-			expected: " SELECT 1; \n",
+			name: "alter sequence with IF EXISTS",
+			stmt: "ALTER SEQUENCE IF EXISTS x;",
+			want: "x",
 		},
 		{
-			name:     "comment in middle of line",
-			input:    "SELECT 1; -- comment",
-			expected: "SELECT 1; \n",
+			name: "not an alter sequence",
+			stmt: "ALTER TABLE x;",
+			want: "",
 		},
 		{
-			name:     "multiline block comment",
-			input:    "/*\nmulti\nline\n*/ SELECT 1;",
-			expected: " SELECT 1;\n",
+			name: "empty string",
+			stmt: "",
+			want: "",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := preprocessSQL(tt.input)
-			assert.Equal(t, tt.expected, result)
+			result := extractAlterSequenceName(tt.stmt)
+			assert.Equal(t, tt.want, result)
 		})
 	}
 }
 
 func TestIntegration_RemoveBlockComments(t *testing.T) {
 	tests := []struct {
-		name     string
-		input    string
-		expected string
+		name  string
+		input string
+		want  string
 	}{
 		{
-			name:     "simple block comment",
-			input:    "/* comment */ SELECT 1;",
-			expected: " SELECT 1;",
+			name:  "simple block comment",
+			input: "/* note */ x;",
+			want:  " x;",
 		},
 		{
-			name:     "multiline block comment",
-			input:    "/*\nmulti\nline\n*/ SELECT 1;",
-			expected: " SELECT 1;",
+			name:  "multiline block comment",
+			input: "/* note\nline2 */ x;",
+			want:  " x;",
 		},
 		{
-			name:     "no block comments",
-			input:    "SELECT 1;",
-			expected: "SELECT 1;",
+			name:  "no block comment",
+			input: "x;",
+			want:  "x;",
 		},
 		{
-			name:     "multiple block comments",
-			input:    "/* a */ SELECT 1; /* b */",
-			expected: " SELECT 1; ",
+			name:  "multiple block comments",
+			input: "/* a */ x; /* b */",
+			want:  " x; ",
 		},
 		{
-			name:     "block comment in string literal",
-			input:    "SELECT '/* not a comment */';",
-			expected: "SELECT '';",
+			name:  "block comment in middle",
+			input: "x /* note */ y;",
+			want:  "x  y;",
+		},
+		{
+			name:  "empty string",
+			input: "",
+			want:  "",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := removeBlockComments(tt.input)
-			assert.Equal(t, tt.expected, result)
+			assert.Equal(t, tt.want, result)
 		})
 	}
 }
 
 func TestIntegration_RemoveLineComments(t *testing.T) {
 	tests := []struct {
-		name     string
-		input    string
-		expected string
+		name  string
+		input string
+		want  string
 	}{
 		{
-			name:     "line comment at start",
-			input:    "-- comment\nSELECT 1;",
-			expected: "SELECT 1;\n",
+			name:  "line comment at start",
+			input: "-- note\nx;",
+			want:  "x;\n",
 		},
 		{
-			name:     "line comment at end",
-			input:    "SELECT 1; -- comment",
-			expected: "SELECT 1; \n",
+			name:  "line comment at end",
+			input: "x; -- note",
+			want:  "x; \n",
 		},
 		{
-			name:     "line comment in middle",
-			input:    "SELECT 1; -- comment\nSELECT 2;",
-			expected: "SELECT 1; \nSELECT 2;\n",
+			name:  "line comment in middle",
+			input: "x; -- note\ny;",
+			want:  "x; \ny;\n",
 		},
 		{
-			name:     "no line comments",
-			input:    "SELECT 1;",
-			expected: "SELECT 1;\n",
+			name:  "no line comment",
+			input: "x;",
+			want:  "x;\n",
 		},
 		{
-			name:     "multiple line comments",
-			input:    "-- comment 1\n-- comment 2\nSELECT 1;",
-			expected: "SELECT 1;\n",
+			name:  "multiple line comments",
+			input: "-- a\n-- b\nx;",
+			want:  "x;\n",
+		},
+		{
+			name:  "empty string",
+			input: "",
+			want:  "\n",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := removeLineComments(tt.input)
-			assert.Equal(t, tt.expected, result)
+			assert.Equal(t, tt.want, result)
+		})
+	}
+}
+
+func TestIntegration_PreprocessSQL(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "block comment removed",
+			input: "/* note */ x;",
+			want:  " x;\n",
+		},
+		{
+			name:  "line comment removed",
+			input: "-- note\nx;",
+			want:  "x;\n",
+		},
+		{
+			name:  "mixed comments removed",
+			input: "/* block */ x; -- line",
+			want:  " x; \n",
+		},
+		{
+			name:  "comment in middle of line",
+			input: "x; -- note",
+			want:  "x; \n",
+		},
+		{
+			name:  "multiline block comment",
+			input: "/*\nmulti\nline\n*/ x;",
+			want:  " x;\n",
+		},
+		{
+			name:  "empty string",
+			input: "",
+			want:  "\n",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := preprocessSQL(tt.input)
+			assert.Equal(t, tt.want, result)
+		})
+	}
+}
+
+func TestIntegration_DetectStatementType(t *testing.T) {
+	tests := []struct {
+		name string
+		stmt string
+		opts *Options
+		want StatementType
+	}{
+		{
+			name: "CREATE SEQUENCE",
+			stmt: "CREATE SEQUENCE my_seq;",
+			opts: &Options{},
+			want: StatementSequence,
+		},
+		{
+			name: "CREATE TABLE",
+			stmt: "CREATE TABLE foo (id int);",
+			opts: &Options{},
+			want: StatementTable,
+		},
+		{
+			name: "CREATE TYPE",
+			stmt: "CREATE TYPE my_type AS ENUM ();",
+			opts: &Options{},
+			want: StatementTypeDomainSchema,
+		},
+		{
+			name: "CREATE SCHEMA",
+			stmt: "CREATE SCHEMA my_schema;",
+			opts: &Options{},
+			want: StatementTypeDomainSchema,
+		},
+		{
+			name: "ALTER TABLE",
+			stmt: "ALTER TABLE foo ADD COLUMN id int;",
+			opts: &Options{},
+			want: StatementAlter,
+		},
+		{
+			name: "DROP TABLE with ExperimentalFolding",
+			stmt: "DROP TABLE foo;",
+			opts: &Options{ExperimentalFolding: true},
+			want: StatementDrop,
+		},
+		{
+			name: "DROP TABLE without ExperimentalFolding",
+			stmt: "DROP TABLE foo;",
+			opts: &Options{},
+			want: StatementUnknown,
+		},
+		{
+			name: "CREATE DOMAIN with ExperimentalFolding",
+			stmt: "CREATE DOMAIN my_domain AS int;",
+			opts: &Options{ExperimentalFolding: true},
+			want: StatementTypeDomainSchema,
+		},
+		{
+			name: "CREATE DOMAIN without ExperimentalFolding",
+			stmt: "CREATE DOMAIN my_domain AS int;",
+			opts: &Options{},
+			want: StatementNoise,
+		},
+		{
+			name: "Partition child without ExperimentalFolding",
+			stmt: "CREATE TABLE foo_1 PARTITION OF foo FOR VALUES FROM (1) TO (100);",
+			opts: &Options{},
+			want: StatementNoise,
+		},
+		{
+			name: "Partition child with ExperimentalFolding",
+			stmt: "CREATE TABLE foo_1 PARTITION OF foo FOR VALUES FROM (1) TO (100);",
+			opts: &Options{ExperimentalFolding: true},
+			want: StatementTable,
+		},
+		{
+			name: "Unknown statement",
+			stmt: "CREATE VIEW my_view AS SELECT 1;",
+			opts: &Options{},
+			want: StatementUnknown,
+		},
+		{
+			name: "Line comment",
+			stmt: "-- this is a comment",
+			opts: &Options{},
+			want: StatementNoise,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := detectStatementType(tt.stmt, tt.opts)
+			assert.Equal(t, tt.want, result)
+		})
+	}
+}
+
+func TestIntegration_CategorizeStatements(t *testing.T) {
+	tests := []struct {
+		name            string
+		statements      []string
+		opts            *Options
+		wantTables      int
+		wantTypeStmts   int
+		wantPassThrough int
+	}{
+		{
+			name: "CREATE TABLE and unknown ALTER",
+			statements: []string{
+				"CREATE TABLE foo (id int);",
+				"ALTER TABLE foo SET something = 1;",
+			},
+			opts:            &Options{},
+			wantTables:      1,
+			wantTypeStmts:   0,
+			wantPassThrough: 1,
+		},
+		{
+			name: "CREATE TYPE and TABLE",
+			statements: []string{
+				"CREATE TYPE my_type AS ENUM ('a', 'b');",
+				"CREATE TABLE foo (id int, type my_type);",
+			},
+			opts:            &Options{},
+			wantTables:      1,
+			wantTypeStmts:   1,
+			wantPassThrough: 0,
+		},
+		{
+			name: "CREATE SEQUENCE",
+			statements: []string{
+				"CREATE SEQUENCE my_seq;",
+			},
+			opts:            &Options{},
+			wantTables:      0,
+			wantTypeStmts:   0,
+			wantPassThrough: 1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tables, _, typeStmts, passThroughs, _, tableOrder := categorizeStatements(tt.statements, tt.opts)
+			assert.Equal(t, tt.wantTables, len(tables), "tables count")
+			assert.Equal(t, tt.wantTables, len(tableOrder), "tableOrder count")
+			assert.Equal(t, tt.wantTypeStmts, len(typeStmts), "typeStmts count")
+			assert.Equal(t, tt.wantPassThrough, len(passThroughs), "passThroughs count")
+		})
+	}
+}
+
+func TestIntegration_InferMissingSchemas(t *testing.T) {
+	tests := []struct {
+		name      string
+		tables    map[string]*model.TableDef
+		typeStmts []string
+		want      int
+	}{
+		{
+			name: "no missing schemas",
+			tables: map[string]*model.TableDef{
+				"public.foo": {Schema: "public", Name: "foo"},
+			},
+			typeStmts: []string{"CREATE SCHEMA app;"},
+			want:      0,
+		},
+		{
+			name: "one missing schema",
+			tables: map[string]*model.TableDef{
+				"app.foo": {Schema: "app", Name: "foo"},
+			},
+			typeStmts: []string{},
+			want:      1,
+		},
+		{
+			name: "schema already declared",
+			tables: map[string]*model.TableDef{
+				"app.foo": {Schema: "app", Name: "foo"},
+			},
+			typeStmts: []string{"CREATE SCHEMA app;"},
+			want:      0,
+		},
+		{
+			name: "multiple missing schemas",
+			tables: map[string]*model.TableDef{
+				"app.foo":   {Schema: "app", Name: "foo"},
+				"other.bar": {Schema: "other", Name: "bar"},
+			},
+			typeStmts: []string{},
+			want:      2,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := inferMissingSchemas(tt.tables, tt.typeStmts)
+			assert.Equal(t, tt.want, len(result))
+		})
+	}
+}
+
+func TestIntegration_CountSequenceUsage(t *testing.T) {
+	tests := []struct {
+		name       string
+		tables     map[string]*model.TableDef
+		tableOrder []string
+		want       map[string]int
+	}{
+		{
+			name: "single sequence usage",
+			tables: map[string]*model.TableDef{
+				"foo": {
+					Name: "foo",
+					Columns: []*model.ColumnDef{
+						{Name: "id", SequenceName: "foo_id_seq"},
+					},
+				},
+			},
+			tableOrder: []string{"foo"},
+			want:       map[string]int{"foo_id_seq": 1},
+		},
+		{
+			name: "shared sequence",
+			tables: map[string]*model.TableDef{
+				"foo": {
+					Name: "foo",
+					Columns: []*model.ColumnDef{
+						{Name: "id", SequenceName: "shared_seq"},
+					},
+				},
+				"bar": {
+					Name: "bar",
+					Columns: []*model.ColumnDef{
+						{Name: "id", SequenceName: "shared_seq"},
+					},
+				},
+			},
+			tableOrder: []string{"foo", "bar"},
+			want:       map[string]int{"shared_seq": 2},
+		},
+		{
+			name: "sequence with schema prefix",
+			tables: map[string]*model.TableDef{
+				"foo": {
+					Name: "foo",
+					Columns: []*model.ColumnDef{
+						{Name: "id", SequenceName: "public.foo_id_seq"},
+					},
+				},
+			},
+			tableOrder: []string{"foo"},
+			want:       map[string]int{"foo_id_seq": 1},
+		},
+		{
+			name: "no sequences",
+			tables: map[string]*model.TableDef{
+				"foo": {
+					Name: "foo",
+					Columns: []*model.ColumnDef{
+						{Name: "id", RawDef: "int"},
+					},
+				},
+			},
+			tableOrder: []string{"foo"},
+			want:       map[string]int{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := countSequenceUsage(tt.tables, tt.tableOrder)
+			assert.Equal(t, tt.want, result)
+		})
+	}
+}
+
+func TestIntegration_ApplySerialConversion(t *testing.T) {
+	tests := []struct {
+		name       string
+		tables     map[string]*model.TableDef
+		tableOrder []string
+		usageCount map[string]int
+		wantSerial bool
+	}{
+		{
+			name: "single usage converts to serial",
+			tables: map[string]*model.TableDef{
+				"foo": {
+					Name: "foo",
+					Columns: []*model.ColumnDef{
+						{Name: "id", RawDef: "bigint", SequenceName: "foo_id_seq"},
+					},
+				},
+			},
+			tableOrder: []string{"foo"},
+			usageCount: map[string]int{"foo_id_seq": 1},
+			wantSerial: true,
+		},
+		{
+			name: "multiple usage does not convert",
+			tables: map[string]*model.TableDef{
+				"foo": {
+					Name: "foo",
+					Columns: []*model.ColumnDef{
+						{Name: "id", RawDef: "bigint", SequenceName: "shared_seq"},
+					},
+				},
+			},
+			tableOrder: []string{"foo"},
+			usageCount: map[string]int{"shared_seq": 2},
+			wantSerial: false,
+		},
+		{
+			name: "integer type converts to serial",
+			tables: map[string]*model.TableDef{
+				"foo": {
+					Name: "foo",
+					Columns: []*model.ColumnDef{
+						{Name: "id", RawDef: "integer", SequenceName: "foo_id_seq"},
+					},
+				},
+			},
+			tableOrder: []string{"foo"},
+			usageCount: map[string]int{"foo_id_seq": 1},
+			wantSerial: true,
+		},
+		{
+			name: "text type does not convert",
+			tables: map[string]*model.TableDef{
+				"foo": {
+					Name: "foo",
+					Columns: []*model.ColumnDef{
+						{Name: "id", RawDef: "text", SequenceName: "foo_id_seq"},
+					},
+				},
+			},
+			tableOrder: []string{"foo"},
+			usageCount: map[string]int{"foo_id_seq": 1},
+			wantSerial: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			applySerialConversion(tt.tables, tt.tableOrder, tt.usageCount)
+			for _, td := range tt.tables {
+				for _, col := range td.Columns {
+					if col.SequenceName != "" {
+						assert.Equal(t, tt.wantSerial, col.IsSerial, "IsSerial for column %s", col.Name)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestIntegration_ExtractSequencesFromPassthroughs(t *testing.T) {
+	tests := []struct {
+		name          string
+		passThroughs  []string
+		usageCount    map[string]int
+		tables        map[string]*model.TableDef
+		wantKept      int
+		wantConverted int
+	}{
+		{
+			name:          "unused sequence kept",
+			passThroughs:  []string{"CREATE SEQUENCE my_seq;"},
+			usageCount:    map[string]int{"my_seq": 0},
+			tables:        map[string]*model.TableDef{},
+			wantKept:      1,
+			wantConverted: 0,
+		},
+		{
+			name:          "shared sequence kept",
+			passThroughs:  []string{"CREATE SEQUENCE shared_seq;"},
+			usageCount:    map[string]int{"shared_seq": 2},
+			tables:        map[string]*model.TableDef{},
+			wantKept:      1,
+			wantConverted: 0,
+		},
+		{
+			name:         "single usage converted to serial",
+			passThroughs: []string{"CREATE SEQUENCE foo_id_seq;"},
+			usageCount:   map[string]int{"foo_id_seq": 1},
+			tables: map[string]*model.TableDef{
+				"foo": {
+					Name: "foo",
+					Columns: []*model.ColumnDef{
+						{Name: "id", RawDef: "bigint", SequenceName: "foo_id_seq"},
+					},
+				},
+			},
+			wantKept:      0,
+			wantConverted: 1,
+		},
+		{
+			name:         "single usage but wrong type kept",
+			passThroughs: []string{"CREATE SEQUENCE foo_id_seq;"},
+			usageCount:   map[string]int{"foo_id_seq": 1},
+			tables: map[string]*model.TableDef{
+				"foo": {
+					Name: "foo",
+					Columns: []*model.ColumnDef{
+						{Name: "id", RawDef: "text", SequenceName: "foo_id_seq"},
+					},
+				},
+			},
+			wantKept:      1,
+			wantConverted: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			kept, converted := extractSequencesFromPassthroughs(tt.passThroughs, tt.usageCount, tt.tables)
+			assert.Equal(t, tt.wantKept, len(kept), "kept sequences")
+			assert.Equal(t, tt.wantConverted, len(converted), "converted sequences")
 		})
 	}
 }

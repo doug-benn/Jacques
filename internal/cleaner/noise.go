@@ -14,38 +14,47 @@ var noisePatterns = []*regexp.Regexp{
 	regexp.MustCompile(`^ALTER\s+\w+\s+\S+\s+OWNER\s+TO\b`),
 }
 
+var (
+	setRE             = regexp.MustCompile(`^SET\s+\w+`)
+	selectPgCatalogRE = regexp.MustCompile(`^SELECT\s+pg_catalog\.`)
+	grantRE           = regexp.MustCompile(`^GRANT\s+`)
+	revokeRE          = regexp.MustCompile(`^REVOKE\s+`)
+	commentRE         = regexp.MustCompile(`^COMMENT\s+ON\s+`)
+	alterOwnerRE      = regexp.MustCompile(`^ALTER\s+\w+\s+\S+\s+OWNER\s+TO\b`)
+)
+
 func getFirstLine(stmt string) string {
 	return strings.Split(stmt, "\n")[0]
 }
 
 func IsSET(stmt string) bool {
 	stripped := strings.TrimSpace(getFirstLine(stmt))
-	return regexp.MustCompile(`^SET\s+\w+`).MatchString(stripped)
+	return setRE.MatchString(stripped)
 }
 
 func IsSelectPgCatalog(stmt string) bool {
 	stripped := strings.TrimSpace(getFirstLine(stmt))
-	return regexp.MustCompile(`^SELECT\s+pg_catalog\.`).MatchString(stripped)
+	return selectPgCatalogRE.MatchString(stripped)
 }
 
 func IsGRANT(stmt string) bool {
 	stripped := strings.TrimSpace(getFirstLine(stmt))
-	return regexp.MustCompile(`^GRANT\s+`).MatchString(stripped)
+	return grantRE.MatchString(stripped)
 }
 
 func IsREVOKE(stmt string) bool {
 	stripped := strings.TrimSpace(getFirstLine(stmt))
-	return regexp.MustCompile(`^REVOKE\s+`).MatchString(stripped)
+	return revokeRE.MatchString(stripped)
 }
 
 func IsCOMMENT(stmt string) bool {
 	stripped := strings.TrimSpace(getFirstLine(stmt))
-	return regexp.MustCompile(`^COMMENT\s+ON\s+`).MatchString(stripped)
+	return commentRE.MatchString(stripped)
 }
 
 func IsALTEROwner(stmt string) bool {
 	stripped := strings.TrimSpace(getFirstLine(stmt))
-	return regexp.MustCompile(`^ALTER\s+\w+\s+\S+\s+OWNER\s+TO\b`).MatchString(stripped)
+	return alterOwnerRE.MatchString(stripped)
 }
 
 func IsNoise(stmt string) bool {

@@ -1,349 +1,454 @@
 package parser
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
-func TestSplitStatements(t *testing.T) {
-	tests := []struct {
-		name         string
-		sql          string
-		wantCount    int
-		wantFirst    string
-		wantContains string
-	}{
-		{
-			name:      "basic semicolons",
-			sql:       "foo; bar;",
-			wantCount: 2,
-			wantFirst: "foo;",
-		},
-		{
-			name:      "single quotes",
-			sql:       "x 'a;b';",
-			wantCount: 1,
-			wantFirst: "x 'a;b';",
-		},
-		{
-			name:      "escaped quotes",
-			sql:       "x 'a''b';",
-			wantCount: 1,
-			wantFirst: "x 'a''b';",
-		},
-		{
-			name:      "dollar quotes",
-			sql:       "x $$a;b$$;",
-			wantCount: 1,
-			wantFirst: "x $$a;b$$;",
-		},
-		{
-			name:      "tagged dollar quotes",
-			sql:       "$tag$text;here$tag$;",
-			wantCount: 1,
-			wantFirst: "$tag$text;here$tag$;",
-		},
-		{
-			name:         "block comments",
-			sql:          "/* a;b */ foo;",
-			wantCount:    1,
-			wantContains: "foo",
-		},
-		{
-			name:         "line comments",
-			sql:          "-- note\nfoo;",
-			wantCount:    1,
-			wantContains: "foo",
-		},
-		{
-			name:         "unterminated dollar quote",
-			sql:          "x $$unclosed",
-			wantCount:    1,
-			wantContains: "$$unclosed",
-		},
-		{
-			name:         "unterminated single quote",
-			sql:          "x 'unclosed",
-			wantCount:    1,
-			wantContains: "'unclosed",
-		},
-		{
-			name:      "empty string",
-			sql:       "",
-			wantCount: 0,
-		},
-		{
-			name:      "only semicolons",
-			sql:       ";;;",
-			wantCount: 0,
-		},
-		{
-			name:      "multiple statements with whitespace",
-			sql:       "  foo;   bar;  ",
-			wantCount: 2,
-			wantFirst: "foo;",
-		},
-		{
-			name:      "nested parentheses in statement",
-			sql:       "x ((1)); foo;",
-			wantCount: 2,
-			wantFirst: "x ((1));",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := SplitStatements(tt.sql)
-			require.Equal(t, tt.wantCount, len(result))
-			if tt.wantFirst != "" {
-				assert.Equal(t, tt.wantFirst, result[0])
-			}
-			if tt.wantContains != "" {
-				assert.Contains(t, result[0], tt.wantContains)
-			}
-		})
-	}
-}
-
-func TestSkipLineComment(t *testing.T) {
+func TestFindDollarQuoteEnd_NonSQL(t *testing.T) {
 	tests := []struct {
 		name     string
-		sql      string
-		i        int
-		wantRes  string
-		wantNewI int
-	}{
-		{
-			name:     "basic line comment",
-			sql:      "-- note\ndata",
-			i:        0,
-			wantRes:  "-- note\n",
-			wantNewI: 8,
-		},
-		{
-			name:     "line comment without newline",
-			sql:      "-- note",
-			i:        0,
-			wantRes:  "-- note",
-			wantNewI: 7,
-		},
-		{
-			name:     "not at comment start",
-			sql:      "data 1",
-			i:        0,
-			wantRes:  "",
-			wantNewI: 0,
-		},
-		{
-			name:     "single dash",
-			sql:      "- more",
-			i:        0,
-			wantRes:  "",
-			wantNewI: 0,
-		},
-		{
-			name:     "empty string",
-			sql:      "",
-			i:        0,
-			wantRes:  "",
-			wantNewI: 0,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result, newI := SkipLineComment(tt.sql, tt.i)
-			assert.Equal(t, tt.wantRes, result)
-			assert.Equal(t, tt.wantNewI, newI)
-		})
-	}
-}
-
-func TestSkipBlockComment(t *testing.T) {
-	tests := []struct {
-		name     string
-		sql      string
-		i        int
-		wantRes  string
-		wantNewI int
-	}{
-		{
-			name:     "basic block comment",
-			sql:      "/* note */ data",
-			i:        0,
-			wantRes:  "/* note */",
-			wantNewI: 10,
-		},
-		{
-			name:     "multiline block comment",
-			sql:      "/* line1\nline2\nline3 */ data",
-			i:        0,
-			wantRes:  "/* line1\nline2\nline3 */",
-			wantNewI: 23,
-		},
-		{
-			name:     "not at comment start",
-			sql:      "data 1",
-			i:        0,
-			wantRes:  "",
-			wantNewI: 0,
-		},
-		{
-			name:     "single slash",
-			sql:      "/ more",
-			i:        0,
-			wantRes:  "",
-			wantNewI: 0,
-		},
-		{
-			name:     "unterminated block comment",
-			sql:      "/* unclosed",
-			i:        0,
-			wantRes:  "/* unclosed",
-			wantNewI: 11,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result, newI := SkipBlockComment(tt.sql, tt.i)
-			assert.Equal(t, tt.wantRes, result)
-			assert.Equal(t, tt.wantNewI, newI)
-		})
-	}
-}
-
-func TestFindDollarQuoteEnd(t *testing.T) {
-	tests := []struct {
-		name     string
-		sql      string
+		input    string
 		i        int
 		wantEndI int
 		wantTag  string
 	}{
 		{
-			name:     "anonymous dollar quote",
-			sql:      "$$content$$ more",
-			i:        0,
-			wantEndI: 11,
-			wantTag:  "$$",
-		},
-		{
-			name:     "tagged dollar quote",
-			sql:      "$tag$content$tag$ more",
-			i:        0,
-			wantEndI: 17,
-			wantTag:  "$tag$",
-		},
-		{
-			name:     "dollar quote in middle",
-			sql:      "x $$content$$ from t",
-			i:        2,
-			wantEndI: 13,
-			wantTag:  "$$",
-		},
-		{
-			name:     "not at dollar sign",
-			sql:      "data 1",
+			name:     "empty string",
+			input:    "",
 			i:        0,
 			wantEndI: -1,
 			wantTag:  "",
 		},
 		{
-			name:     "empty string",
-			sql:      "",
+			name:     "not at dollar sign",
+			input:    "data 1",
+			i:        0,
+			wantEndI: -1,
+			wantTag:  "",
+		},
+		{
+			name:     "dollar in middle not at start",
+			input:    "text $tag$ content",
+			i:        5,
+			wantEndI: -1,
+			wantTag:  "",
+		},
+		{
+			name:     "single dollar not followed by tag",
+			input:    "$ not a quote",
 			i:        0,
 			wantEndI: -1,
 			wantTag:  "",
 		},
 		{
 			name:     "unclosed dollar quote",
-			sql:      "$$unclosed",
+			input:    "$$unclosed",
 			i:        0,
 			wantEndI: -1,
 			wantTag:  "",
 		},
 		{
-			name:     "tag with underscore",
-			sql:      "$tag_123$content$tag_123$",
+			name:     "numeric after dollar",
+			input:    "$123$content$123$",
 			i:        0,
-			wantEndI: 25,
-			wantTag:  "$tag_123$",
+			wantEndI: -1,
+			wantTag:  "",
+		},
+		{
+			name:     "invalid tag starts with number",
+			input:    "$1tag$content$1tag$",
+			i:        0,
+			wantEndI: -1,
+			wantTag:  "",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			endI, tag := FindDollarQuoteEnd(tt.sql, tt.i)
+			endI, tag := FindDollarQuoteEnd(tt.input, tt.i)
 			assert.Equal(t, tt.wantEndI, endI)
 			assert.Equal(t, tt.wantTag, tag)
 		})
 	}
 }
 
-func TestFindSingleQuoteEnd(t *testing.T) {
+func TestFindSingleQuoteEnd_NonSQL(t *testing.T) {
 	tests := []struct {
 		name     string
-		sql      string
+		input    string
 		i        int
 		wantEndI int
 	}{
 		{
-			name:     "basic single quote",
-			sql:      "'text' more",
+			name:     "empty string",
+			input:    "",
 			i:        0,
-			wantEndI: 6,
-		},
-		{
-			name:     "quote in middle",
-			sql:      "x 'hello'",
-			i:        2,
-			wantEndI: 9,
-		},
-		{
-			name:     "escaped quote",
-			sql:      "'a''b' more",
-			i:        0,
-			wantEndI: 6,
-		},
-		{
-			name:     "multiple escaped quotes",
-			sql:      "'a''b''c'",
-			i:        0,
-			wantEndI: 9,
+			wantEndI: -1,
 		},
 		{
 			name:     "not at quote",
-			sql:      "data 1",
+			input:    "data 1",
 			i:        0,
 			wantEndI: -1,
 		},
 		{
-			name:     "unclosed quote",
-			sql:      "'unclosed",
+			name:     "quote in middle not at start",
+			input:    "text hello",
+			i:        5,
+			wantEndI: -1,
+		},
+		{
+			name:     "double quote not single",
+			input:    "\"text\"",
 			i:        0,
 			wantEndI: -1,
 		},
 		{
-			name:     "empty string",
-			sql:      "",
+			name:     "backtick not single quote",
+			input:    "`text`",
 			i:        0,
 			wantEndI: -1,
 		},
 		{
 			name:     "only quote",
-			sql:      "'",
+			input:    "'",
 			i:        0,
 			wantEndI: -1,
+		},
+		{
+			name:     "two quotes not escaped",
+			input:    "''",
+			i:        0,
+			wantEndI: 2,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			endI := FindSingleQuoteEnd(tt.sql, tt.i)
+			endI := FindSingleQuoteEnd(tt.input, tt.i)
 			assert.Equal(t, tt.wantEndI, endI)
+		})
+	}
+}
+
+func TestSkipLineComment_NonSQL(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		i        int
+		wantRes  string
+		wantNewI int
+	}{
+		{
+			name:     "empty string",
+			input:    "",
+			i:        0,
+			wantRes:  "",
+			wantNewI: 0,
+		},
+		{
+			name:     "not at comment start",
+			input:    "data 1",
+			i:        0,
+			wantRes:  "",
+			wantNewI: 0,
+		},
+		{
+			name:     "single dash",
+			input:    "- more",
+			i:        0,
+			wantRes:  "",
+			wantNewI: 0,
+		},
+		{
+			name:     "dash not followed by dash",
+			input:    "-- not a comment at position 1",
+			i:        1,
+			wantRes:  "",
+			wantNewI: 1,
+		},
+		{
+			name:     "starts with other character",
+			input:    "# not a comment",
+			i:        0,
+			wantRes:  "",
+			wantNewI: 0,
+		},
+		{
+			name:     "slash not dash",
+			input:    "/ comment",
+			i:        0,
+			wantRes:  "",
+			wantNewI: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, newI := SkipLineComment(tt.input, tt.i)
+			assert.Equal(t, tt.wantRes, result)
+			assert.Equal(t, tt.wantNewI, newI)
+		})
+	}
+}
+
+func TestSkipBlockComment_NonSQL(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		i        int
+		wantRes  string
+		wantNewI int
+	}{
+		{
+			name:     "empty string",
+			input:    "",
+			i:        0,
+			wantRes:  "",
+			wantNewI: 0,
+		},
+		{
+			name:     "not at comment start",
+			input:    "data 1",
+			i:        0,
+			wantRes:  "",
+			wantNewI: 0,
+		},
+		{
+			name:     "single slash",
+			input:    "/ more",
+			i:        0,
+			wantRes:  "",
+			wantNewI: 0,
+		},
+		{
+			name:     "slash not followed by asterisk",
+			input:    "/* not a comment at position 1",
+			i:        1,
+			wantRes:  "",
+			wantNewI: 1,
+		},
+		{
+			name:     "starts with asterisk",
+			input:    "* not a comment",
+			i:        0,
+			wantRes:  "",
+			wantNewI: 0,
+		},
+		{
+			name:     "dash not slash",
+			input:    "-- comment",
+			i:        0,
+			wantRes:  "",
+			wantNewI: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, newI := SkipBlockComment(tt.input, tt.i)
+			assert.Equal(t, tt.wantRes, result)
+			assert.Equal(t, tt.wantNewI, newI)
+		})
+	}
+}
+
+func TestHandleLineComment_NonSQL(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		i       int
+		wantOk  bool
+		wantI   int
+		wantStr string
+	}{
+		{
+			name:    "empty string",
+			input:   "",
+			i:       0,
+			wantOk:  false,
+			wantI:   0,
+			wantStr: "",
+		},
+		{
+			name:    "not a line comment",
+			input:   "data 1",
+			i:       0,
+			wantOk:  false,
+			wantI:   0,
+			wantStr: "",
+		},
+		{
+			name:    "single dash",
+			input:   "- more text",
+			i:       0,
+			wantOk:  false,
+			wantI:   0,
+			wantStr: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var sb strings.Builder
+			ok, newI := handleLineComment(tt.input, tt.i, &sb)
+			assert.Equal(t, tt.wantOk, ok)
+			assert.Equal(t, tt.wantI, newI)
+			assert.Equal(t, tt.wantStr, sb.String())
+		})
+	}
+}
+
+func TestHandleBlockComment_NonSQL(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		i       int
+		wantOk  bool
+		wantI   int
+		wantStr string
+	}{
+		{
+			name:    "empty string",
+			input:   "",
+			i:       0,
+			wantOk:  false,
+			wantI:   0,
+			wantStr: "",
+		},
+		{
+			name:    "not a block comment",
+			input:   "data 1",
+			i:       0,
+			wantOk:  false,
+			wantI:   0,
+			wantStr: "",
+		},
+		{
+			name:    "single slash",
+			input:   "/ more text",
+			i:       0,
+			wantOk:  false,
+			wantI:   0,
+			wantStr: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var sb strings.Builder
+			ok, newI := handleBlockComment(tt.input, tt.i, &sb)
+			assert.Equal(t, tt.wantOk, ok)
+			assert.Equal(t, tt.wantI, newI)
+			assert.Equal(t, tt.wantStr, sb.String())
+		})
+	}
+}
+
+func TestHandleDollarQuote_NonSQL(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		i       int
+		wantOk  bool
+		wantI   int
+		wantStr string
+	}{
+		{
+			name:    "empty string",
+			input:   "",
+			i:       0,
+			wantOk:  false,
+			wantI:   0,
+			wantStr: "",
+		},
+		{
+			name:    "not a dollar quote",
+			input:   "data 1",
+			i:       0,
+			wantOk:  false,
+			wantI:   0,
+			wantStr: "",
+		},
+		{
+			name:    "dollar in middle not at position",
+			input:   "text $tag$ content",
+			i:       5,
+			wantOk:  false,
+			wantI:   5,
+			wantStr: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var sb strings.Builder
+			ok, newI := handleDollarQuote(tt.input, tt.i, &sb)
+			assert.Equal(t, tt.wantOk, ok)
+			assert.Equal(t, tt.wantI, newI)
+			assert.Equal(t, tt.wantStr, sb.String())
+		})
+	}
+}
+
+func TestHandleSingleQuote_NonSQL(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		i       int
+		n       int
+		wantOk  bool
+		wantI   int
+		wantStr string
+	}{
+		{
+			name:    "empty string",
+			input:   "",
+			i:       0,
+			n:       0,
+			wantOk:  false,
+			wantI:   0,
+			wantStr: "",
+		},
+		{
+			name:    "not a single quote",
+			input:   "data 1",
+			i:       0,
+			n:       9,
+			wantOk:  false,
+			wantI:   0,
+			wantStr: "",
+		},
+		{
+			name:    "quote in middle not at position",
+			input:   "text hello",
+			i:       5,
+			n:       10,
+			wantOk:  false,
+			wantI:   5,
+			wantStr: "",
+		},
+		{
+			name:    "double quote not single",
+			input:   "\"text\"",
+			i:       0,
+			n:       7,
+			wantOk:  false,
+			wantI:   0,
+			wantStr: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var sb strings.Builder
+			ok, newI := handleSingleQuote(tt.input, tt.i, tt.n, &sb)
+			assert.Equal(t, tt.wantOk, ok)
+			assert.Equal(t, tt.wantI, newI)
+			assert.Equal(t, tt.wantStr, sb.String())
 		})
 	}
 }

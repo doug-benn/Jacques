@@ -9,6 +9,33 @@ import (
 	"github.com/doug-benn/Jacques/internal/parser"
 )
 
+// StatementType represents the type of SQL statement being processed.
+// This is used to categorize statements during the processing pipeline.
+type StatementType int
+
+const (
+	// StatementNoise represents statements that should be ignored (e.g., noise comments)
+	StatementNoise StatementType = iota
+
+	// StatementSequence represents CREATE SEQUENCE statements
+	StatementSequence
+
+	// StatementTypeDomainSchema represents CREATE TYPE, CREATE DOMAIN, or CREATE SCHEMA statements
+	StatementTypeDomainSchema
+
+	// StatementTable represents CREATE TABLE statements
+	StatementTable
+
+	// StatementAlter represents ALTER TABLE statements
+	StatementAlter
+
+	// StatementDrop represents DROP statements
+	StatementDrop
+
+	// StatementUnknown represents any other statement type
+	StatementUnknown
+)
+
 var createSeqRE = regexp.MustCompile(`(?i)^CREATE\s+SEQUENCE\s+`)
 var alterSeqOwnedByRE = regexp.MustCompile(`(?i)^ALTER\s+SEQUENCE\b.*\bOWNED\s+BY\b`)
 var createTypeDomainSchemaRE = regexp.MustCompile(`(?m)^CREATE (TYPE|DOMAIN|SCHEMA)`)
@@ -16,6 +43,67 @@ var createDomainRE = regexp.MustCompile(`(?m)^CREATE\s+DOMAIN`)
 var partitionOfRE = regexp.MustCompile(`(?i)^CREATE\s+TABLE\s+.*\s+PARTITION\s+OF\s+`)
 var blockCommentRE = regexp.MustCompile(`(?s)/\*.*?\*/`)
 var dropRE = regexp.MustCompile(`(?i)^DROP\s+(TABLE|INDEX|SEQUENCE|VIEW|MATERIALIZED\s+VIEW)\s+(IF\s+EXISTS\s+)?(\S+)`)
+
+// detectStatementType determines the type of SQL statement.
+// It returns the StatementType based on the statement content and options.
+func detectStatementType(stmt string, opts *Options) StatementType {
+	stripped := strings.TrimSpace(stmt)
+	upper := strings.ToUpper(stripped)
+
+	// Check for noise first (comments, etc.)
+	if cleaner.IsNoise(stmt) {
+		return StatementNoise
+	}
+
+	// Check for CREATE SEQUENCE
+	if createSeqRE.MatchString(stripped) {
+		return StatementSequence
+	}
+
+	// Check for CREATE TYPE, DOMAIN, or SCHEMA
+	if createTypeDomainSchemaRE.MatchString(stmt) {
+		// Skip DOMAIN unless ExperimentalFolding is enabled
+		if createDomainRE.MatchString(stmt) && !opts.ExperimentalFolding {
+			return StatementNoise // Skip DOMAIN when not enabled
+		}
+		return StatementTypeDomainSchema
+	}
+
+	// Skip comments
+	if strings.HasPrefix(stripped, "--") {
+		return StatementNoise
+	}
+
+	// Skip ALTER SEQUENCE OWNED BY
+	if alterSeqOwnedByRE.MatchString(stripped) {
+		return StatementNoise
+	}
+
+	// Check for CREATE TABLE
+	if strings.HasPrefix(upper, "CREATE TABLE") {
+		// Skip partition children unless ExperimentalFolding is enabled
+		if partitionOfRE.MatchString(stripped) && !opts.ExperimentalFolding {
+			return StatementNoise
+		}
+		return StatementTable
+	}
+
+	// Check for ALTER TABLE
+	if strings.HasPrefix(upper, "ALTER TABLE") {
+		return StatementAlter
+	}
+
+	// Check for DROP (only when ExperimentalFolding is enabled)
+	if strings.HasPrefix(upper, "DROP ") && opts.ExperimentalFolding {
+		dropMatch := dropRE.FindStringSubmatch(stmt)
+		if dropMatch != nil && dropMatch[2] == "" {
+			return StatementDrop
+		}
+	}
+
+	// Everything else is unknown (will be passed through)
+	return StatementUnknown
+}
 
 func Process(sql string, opts *Options) string {
 	if opts == nil {
@@ -25,59 +113,82 @@ func Process(sql string, opts *Options) string {
 	// Pre-process: remove block comments and line comments
 	sql = preprocessSQL(sql)
 
+	// Split SQL into statements
 	statements := parser.SplitStatements(sql)
 
-	tables := make(map[string]*model.TableDef)
-	sequences := make(map[string]bool)
-	passThroughs := []string{}
-	typeStmts := []string{}
-	fkPassthroughs := []string{}
-	tableOrder := []string{}
+	// Categorize statements into tables, sequences, types, and pass-throughs
+	tables, _, typeStmts, passThroughs, fkPassthroughs, tableOrder := categorizeStatements(statements, opts)
 
+	// Infer missing CREATE SCHEMA statements and append to typeStmts
+	typeStmts = append(typeStmts, inferMissingSchemas(tables, typeStmts)...)
+
+	// Count sequence usage across tables
+	usageCount := countSequenceUsage(tables, tableOrder)
+
+	// Apply SERIAL conversion based on usage count
+	applySerialConversion(tables, tableOrder, usageCount)
+
+	// Extract sequences to keep from pass-throughs
+	keptSequences, convertedToSerial := extractSequencesFromPassthroughs(passThroughs, usageCount, tables)
+
+	// Build final output
+	return buildOutput(tables, keptSequences, typeStmts, passThroughs, fkPassthroughs, tableOrder, convertedToSerial, opts)
+}
+
+// categorizeStatements parses SQL statements and categorizes them into tables, sequences, types, and pass-throughs.
+// It returns maps and slices for tables, sequences, type statements, pass-through statements, FK pass-throughs,
+// and the order in which tables were encountered.
+//
+// Parameters:
+//   - statements: slice of SQL statements to categorize
+//   - opts: processing options (can be nil)
+//
+// Returns:
+//   - tables: map of table name to TableDef
+//   - sequences: map of sequence name to existence flag
+//   - typeStmts: slice of CREATE TYPE/DOMAIN/SCHEMA statements
+//   - passThroughs: slice of statements to pass through unchanged
+//   - fkPassthroughs: slice of FK-related statements that need special handling
+//   - tableOrder: slice of table keys in the order they were encountered
+func categorizeStatements(statements []string, opts *Options) (
+	tables map[string]*model.TableDef,
+	sequences map[string]bool,
+	typeStmts []string,
+	passThroughs []string,
+	fkPassthroughs []string,
+	tableOrder []string,
+) {
+	tables = make(map[string]*model.TableDef)
+	sequences = make(map[string]bool)
+	typeStmts = []string{}
+	passThroughs = []string{}
+	fkPassthroughs = []string{}
+	tableOrder = []string{}
+
+	// Track seen tables to avoid duplicates in tableOrder
 	seenTable := make(map[string]bool)
 
 	for _, stmt := range statements {
-		stripped := strings.TrimSpace(stmt)
+		stmtType := detectStatementType(stmt, opts)
 
-		if cleaner.IsNoise(stmt) {
+		switch stmtType {
+		case StatementNoise:
+			// Skip noise statements
 			continue
-		}
 
-		if createSeqRE.MatchString(stripped) {
+		case StatementSequence:
 			seqName := extractSequenceName(stmt)
 			if seqName != "" {
 				sequences[seqName] = true
 			}
 			passThroughs = append(passThroughs, stmt)
 			continue
-		}
 
-		// Track CREATE TYPE, CREATE DOMAIN, and CREATE SCHEMA statements to output before tables
-		// Use a regex to match at the start of a line (not just anywhere in statement)
-		if createTypeDomainSchemaRE.MatchString(stmt) {
-			// Skip DOMAIN unless ExperimentalFolding is enabled
-			if createDomainRE.MatchString(stmt) && !opts.ExperimentalFolding {
-				continue // Skip DOMAIN entirely when not enabled
-			}
+		case StatementTypeDomainSchema:
 			typeStmts = append(typeStmts, stmt)
 			continue
-		}
 
-		// Skip comments (they don't need to be in output)
-		if strings.HasPrefix(stripped, "--") {
-			continue
-		}
-
-		if alterSeqOwnedByRE.MatchString(stripped) {
-			continue
-		}
-
-		if strings.HasPrefix(strings.ToUpper(stripped), "CREATE TABLE") {
-			// Skip partition children unless ExperimentalFolding is enabled
-			if partitionOfRE.MatchString(stripped) && !opts.ExperimentalFolding {
-				continue
-			}
-
+		case StatementTable:
 			td, err := cleaner.ParseCreateTable(stmt)
 			if err != nil {
 				passThroughs = append(passThroughs, stmt)
@@ -100,24 +211,21 @@ func Process(sql string, opts *Options) string {
 				seenTable[td.Name] = true
 			}
 			continue
-		}
 
-		if strings.HasPrefix(strings.ToUpper(stripped), "ALTER TABLE") {
+		case StatementAlter:
 			result := cleaner.RouteAlter(stmt, tables)
 			if result == nil {
 				continue
 			}
-			if strings.Contains(strings.ToUpper(stripped), "FOREIGN KEY") {
+			if strings.Contains(strings.ToUpper(stmt), "FOREIGN KEY") {
 				fkPassthroughs = append(fkPassthroughs, cleaner.Transform(*result))
 				continue
 			}
 			passThroughs = append(passThroughs, cleaner.Transform(*result))
 			continue
-		}
 
-		// Handle DROP statements - add IF EXISTS (only when ExperimentalFolding is enabled)
-		if strings.HasPrefix(strings.ToUpper(stripped), "DROP ") && opts.ExperimentalFolding {
-			dropMatch := dropRE.FindStringSubmatch(stripped)
+		case StatementDrop:
+			dropMatch := dropRE.FindStringSubmatch(stmt)
 			if dropMatch != nil && dropMatch[2] == "" {
 				// No IF EXISTS, add it
 				dropType := dropMatch[1]
@@ -130,12 +238,30 @@ func Process(sql string, opts *Options) string {
 				passThroughs = append(passThroughs, transformed)
 				continue
 			}
-		}
+			// Fall through to default
 
-		passThroughs = append(passThroughs, stmt)
+		default:
+			// Unknown statement - pass through
+			passThroughs = append(passThroughs, stmt)
+		}
 	}
 
-	// Infer missing CREATE SCHEMA statements
+	return tables, sequences, typeStmts, passThroughs, fkPassthroughs, tableOrder
+}
+
+// schemaRE is used to extract schema names from CREATE SCHEMA statements
+var schemaRE = regexp.MustCompile(`(?i)^CREATE\s+SCHEMA\s+(?:IF\s+NOT\s+EXISTS\s+)?([a-zA-Z_][a-zA-Z_0-9]*)`)
+
+// inferMissingSchemas analyzes tables and existing type statements to find schemas that are used but not explicitly created.
+// It returns a slice of CREATE SCHEMA statements for any missing schemas.
+//
+// Parameters:
+//   - tables: map of table definitions
+//   - typeStmts: existing CREATE TYPE/DOMAIN/SCHEMA statements
+//
+// Returns:
+//   - slice of CREATE SCHEMA statements for missing schemas
+func inferMissingSchemas(tables map[string]*model.TableDef, typeStmts []string) []string {
 	// Collect all schemas used by tables
 	tableSchemas := make(map[string]bool)
 	for _, td := range tables {
@@ -146,7 +272,6 @@ func Process(sql string, opts *Options) string {
 
 	// Extract schemas already defined in typeStmts
 	existingSchemas := make(map[string]bool)
-	schemaRE := regexp.MustCompile(`(?i)^CREATE\s+SCHEMA\s+(?:IF\s+NOT\s+EXISTS\s+)?([a-zA-Z_][a-zA-Z_0-9]*)`)
 	for _, stmt := range typeStmts {
 		if matches := schemaRE.FindStringSubmatch(stmt); matches != nil {
 			existingSchemas[strings.ToLower(matches[1])] = true
@@ -154,23 +279,36 @@ func Process(sql string, opts *Options) string {
 	}
 
 	// Add inferred CREATE SCHEMA for missing schemas
+	var inferredSchemas []string
 	for schema := range tableSchemas {
 		if !existingSchemas[strings.ToLower(schema)] {
-			typeStmts = append(typeStmts, "CREATE SCHEMA "+schema+";")
+			inferredSchemas = append(inferredSchemas, "CREATE SCHEMA "+schema+";")
 		}
 	}
 
-	// Normalize sequence names (remove schema prefix) to properly detect shared sequences
-	normalizeSequenceName := func(name string) string {
-		// Handle both "global_id_seq" and "public.global_id_seq"
-		parts := strings.Split(name, ".")
-		return parts[len(parts)-1]
-	}
+	return inferredSchemas
+}
 
-	// Count how many times each sequence is used - only convert to SERIAL if used by exactly 1 column
-	// Use tableOrder to avoid double-counting (tables map has duplicate entries)
+// normalizeSequenceName extracts just the sequence name without schema prefix.
+// For example, "public.my_seq" becomes "my_seq".
+func normalizeSequenceName(name string) string {
+	parts := strings.Split(name, ".")
+	return parts[len(parts)-1]
+}
+
+// countSequenceUsage counts how many times each sequence is used across all tables.
+// It uses tableOrder to avoid double-counting duplicate table entries.
+//
+// Parameters:
+//   - tables: map of table definitions
+//   - tableOrder: ordered slice of table keys
+//
+// Returns:
+//   - map of normalized sequence name to usage count
+func countSequenceUsage(tables map[string]*model.TableDef, tableOrder []string) map[string]int {
 	sequenceUsageCount := make(map[string]int)
 	countedTables := make(map[*model.TableDef]bool)
+
 	for _, key := range tableOrder {
 		td := tables[key]
 		if countedTables[td] {
@@ -185,19 +323,32 @@ func Process(sql string, opts *Options) string {
 		}
 	}
 
-	// Set IsSerial based on the count - use a new flag map to track processed tables
+	return sequenceUsageCount
+}
+
+// applySerialConversion sets the IsSerial flag on columns based on sequence usage count.
+// A sequence is converted to SERIAL only if it's used by exactly one column
+// and the column type is compatible (bigint, integer, or smallint).
+//
+// Parameters:
+//   - tables: map of table definitions
+//   - tableOrder: ordered slice of table keys
+//   - usageCount: map of normalized sequence name to usage count
+func applySerialConversion(tables map[string]*model.TableDef, tableOrder []string, usageCount map[string]int) {
 	processedForSerial := make(map[*model.TableDef]bool)
+
 	for _, key := range tableOrder {
 		td := tables[key]
 		if processedForSerial[td] {
 			continue
 		}
 		processedForSerial[td] = true
+
 		for _, col := range td.Columns {
 			if col.SequenceName != "" {
 				normalized := normalizeSequenceName(col.SequenceName)
 				// Only set SERIAL if count == 1 AND column type is bigint, integer, or smallint
-				if sequenceUsageCount[normalized] == 1 {
+				if usageCount[normalized] == 1 {
 					rawDefLower := strings.ToLower(col.RawDef)
 					if strings.Contains(rawDefLower, "bigint") && !strings.Contains(rawDefLower, "smallint") {
 						col.IsSerial = true
@@ -215,30 +366,26 @@ func Process(sql string, opts *Options) string {
 			}
 		}
 	}
+}
 
-	var output []string
-
-	// First, collect all types from both typeStmts and passThroughs
-	// This ensures types are always defined before tables that use them
-	allTypes := append([]string{}, typeStmts...)
-	for _, stmt := range passThroughs {
-		upper := strings.ToUpper(strings.TrimSpace(stmt))
-		// Only include DOMAIN if ExperimentalFolding is enabled
-		if strings.HasPrefix(upper, "CREATE TYPE") {
-			allTypes = append(allTypes, stmt)
-		} else if strings.HasPrefix(upper, "CREATE DOMAIN") && opts.ExperimentalFolding {
-			allTypes = append(allTypes, stmt)
-		}
-	}
-
-	// Output types first (they must be created before tables that use them)
-	output = append(output, allTypes...)
-
-	// Collect sequences that should be kept (used by tables or standalone)
-	// These must be created before tables that reference them
-	// Also track sequences converted to SERIAL to filter ALTER SEQUENCE statements
+// extractSequencesFromPassthroughs processes pass-through statements to determine which sequences should be kept.
+// A sequence is kept if:
+// - It's not used by any column (usageCount == 0)
+// - It's used by multiple columns (usageCount >= 2)
+// - It's used by exactly one column but can't be converted to SERIAL (e.g., wrong type)
+//
+// Parameters:
+//   - passThroughs: slice of pass-through statements
+//   - usageCount: map of normalized sequence name to usage count
+//   - tables: map of table definitions
+//
+// Returns:
+//   - keptSequences: slice of CREATE SEQUENCE statements to keep
+//   - convertedToSerial: map of normalized sequence names that were converted to SERIAL
+func extractSequencesFromPassthroughs(passThroughs []string, usageCount map[string]int, tables map[string]*model.TableDef) ([]string, map[string]bool) {
 	var keptSequences []string
-	sequencesConvertedToSerial := make(map[string]bool)
+	convertedToSerial := make(map[string]bool)
+
 	for _, stmt := range passThroughs {
 		stripped := strings.TrimSpace(stmt)
 
@@ -246,12 +393,14 @@ func Process(sql string, opts *Options) string {
 			seqName := extractSequenceName(stmt)
 			normalized := normalizeSequenceName(seqName)
 			keepSequence := false
-			usageCount := sequenceUsageCount[normalized]
-			if usageCount == 0 {
+			usageCnt := usageCount[normalized]
+
+			if usageCnt == 0 {
 				keepSequence = true
-			} else if usageCount >= 2 {
+			} else if usageCnt >= 2 {
 				keepSequence = true
-			} else if usageCount == 1 {
+			} else if usageCnt == 1 {
+				// Check if we can convert to SERIAL
 				for _, td := range tables {
 					for _, col := range td.Columns {
 						if normalizeSequenceName(col.SequenceName) == normalized {
@@ -271,13 +420,59 @@ func Process(sql string, opts *Options) string {
 				keptSequences = append(keptSequences, stmt)
 			} else {
 				// Sequence was converted to SERIAL, track it to filter ALTER SEQUENCE
-				sequencesConvertedToSerial[normalized] = true
+				convertedToSerial[normalized] = true
 			}
 		}
 	}
 
+	return keptSequences, convertedToSerial
+}
+
+// buildOutput assembles the final output string from categorized components.
+// The output order is: types, sequences, tables, other pass-throughs, FK pass-throughs.
+//
+// Parameters:
+//   - tables: map of table definitions
+//   - sequences: slice of CREATE SEQUENCE statements to keep
+//   - typeStmts: slice of CREATE TYPE/DOMAIN/SCHEMA statements (including inferred schemas)
+//   - passThroughs: slice of other pass-through statements
+//   - fkPassthroughs: slice of FK-related pass-through statements
+//   - tableOrder: ordered slice of table keys
+//   - convertedToSerial: map of sequence names converted to SERIAL
+//   - opts: processing options
+//
+// Returns:
+//   - final output string
+func buildOutput(
+	tables map[string]*model.TableDef,
+	sequences []string,
+	typeStmts []string,
+	passThroughs []string,
+	fkPassthroughs []string,
+	tableOrder []string,
+	convertedToSerial map[string]bool,
+	opts *Options,
+) string {
+	var output []string
+
+	// First, collect all types from both typeStmts and passThroughs
+	// This ensures types are always defined before tables that use them
+	allTypes := append([]string{}, typeStmts...)
+	for _, stmt := range passThroughs {
+		upper := strings.ToUpper(strings.TrimSpace(stmt))
+		// Only include DOMAIN if ExperimentalFolding is enabled
+		if strings.HasPrefix(upper, "CREATE TYPE") {
+			allTypes = append(allTypes, stmt)
+		} else if strings.HasPrefix(upper, "CREATE DOMAIN") && opts.ExperimentalFolding {
+			allTypes = append(allTypes, stmt)
+		}
+	}
+
+	// Output types first (they must be created before tables that use them)
+	output = append(output, allTypes...)
+
 	// Output sequences before tables (they must exist before tables use DEFAULT nextval)
-	output = append(output, keptSequences...)
+	output = append(output, sequences...)
 
 	// Output tables
 	for _, key := range tableOrder {
@@ -290,7 +485,7 @@ func Process(sql string, opts *Options) string {
 		}
 	}
 
-	// Output other passthroughs (not types, sequences, or tables)
+	// Output other pass-throughs (not types, sequences, or tables)
 	for _, stmt := range passThroughs {
 		stripped := strings.TrimSpace(stmt)
 		upper := strings.ToUpper(stripped)
@@ -312,7 +507,7 @@ func Process(sql string, opts *Options) string {
 		// Skip ALTER SEQUENCE statements for sequences converted to SERIAL
 		if strings.HasPrefix(upper, "ALTER SEQUENCE") {
 			seqName := extractAlterSequenceName(stripped)
-			if seqName != "" && sequencesConvertedToSerial[normalizeSequenceName(seqName)] {
+			if seqName != "" && convertedToSerial[normalizeSequenceName(seqName)] {
 				continue
 			}
 		}

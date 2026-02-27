@@ -71,47 +71,26 @@ func SplitStatements(sql string) []string {
 	for i < n {
 		ch := sql[i]
 
-		// Line comment
-		if ch == '-' && i+1 < n && sql[i+1] == '-' {
-			result, newI := SkipLineComment(sql, i)
-			current.WriteString(result)
+		if consumed, newI := handleLineComment(sql, i, &current); consumed {
 			i = newI
 			continue
 		}
 
-		// Block comment
-		if ch == '/' && i+1 < n && sql[i+1] == '*' {
-			result, newI := SkipBlockComment(sql, i)
-			current.WriteString(result)
+		if consumed, newI := handleBlockComment(sql, i, &current); consumed {
 			i = newI
 			continue
 		}
 
-		// Dollar-quote
-		if ch == '$' {
-			endI, _ := FindDollarQuoteEnd(sql, i)
-			if endI != -1 {
-				current.WriteString(sql[i:endI])
-				i = endI
-				continue
-			}
+		if consumed, newI := handleDollarQuote(sql, i, &current); consumed {
+			i = newI
+			continue
 		}
 
-		// Single-quoted string
-		if ch == '\'' {
-			endI := FindSingleQuoteEnd(sql, i)
-			if endI != -1 {
-				current.WriteString(sql[i:endI])
-				i = endI
-				continue
-			} else {
-				current.WriteString(sql[i:])
-				i = n
-				continue
-			}
+		if consumed, newI := handleSingleQuote(sql, i, n, &current); consumed {
+			i = newI
+			continue
 		}
 
-		// Statement terminator
 		if ch == ';' {
 			current.WriteString(";")
 			stmt := strings.TrimSpace(current.String())
@@ -127,11 +106,54 @@ func SplitStatements(sql string) []string {
 		i++
 	}
 
-	// Trailing content
 	remainder := strings.TrimSpace(current.String())
 	if remainder != "" {
 		statements = append(statements, remainder)
 	}
 
 	return statements
+}
+
+func handleLineComment(sql string, i int, current *strings.Builder) (bool, int) {
+	if i >= len(sql) || sql[i] != '-' || i+1 >= len(sql) || sql[i+1] != '-' {
+		return false, i
+	}
+	result, newI := SkipLineComment(sql, i)
+	current.WriteString(result)
+	return true, newI
+}
+
+func handleBlockComment(sql string, i int, current *strings.Builder) (bool, int) {
+	if i+1 >= len(sql) || sql[i] != '/' || sql[i+1] != '*' {
+		return false, i
+	}
+	result, newI := SkipBlockComment(sql, i)
+	current.WriteString(result)
+	return true, newI
+}
+
+func handleDollarQuote(sql string, i int, current *strings.Builder) (bool, int) {
+	if i >= len(sql) || sql[i] != '$' {
+		return false, i
+	}
+	endI, _ := FindDollarQuoteEnd(sql, i)
+	if endI != -1 {
+		current.WriteString(sql[i:endI])
+		return true, endI
+	}
+	return false, i
+}
+
+func handleSingleQuote(sql string, i, n int, current *strings.Builder) (bool, int) {
+	if i >= len(sql) || sql[i] != '\'' {
+		return false, i
+	}
+	endI := FindSingleQuoteEnd(sql, i)
+	if endI != -1 {
+		current.WriteString(sql[i:endI])
+		return true, endI
+	} else {
+		current.WriteString(sql[i:])
+		return true, n
+	}
 }

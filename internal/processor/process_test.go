@@ -127,226 +127,32 @@ func assertIndexPreserved(t *testing.T, sql, indexName string) {
 	assertStatementContains(t, sql, "CREATE INDEX "+indexName, "Index "+indexName)
 }
 
-func TestExtractSequenceName(t *testing.T) {
-	tests := []struct {
-		name string
-		stmt string
-		want string
-	}{
-		{
-			name: "basic sequence",
-			stmt: "CREATE SEQUENCE x;",
-			want: "x",
-		},
-		{
-			name: "sequence with schema",
-			stmt: "CREATE SEQUENCE public.x;",
-			want: "public.x",
-		},
-		{
-			name: "sequence with IF NOT EXISTS",
-			stmt: "CREATE SEQUENCE IF NOT EXISTS x;",
-			want: "x",
-		},
-		{
-			name: "sequence with schema and IF NOT EXISTS",
-			stmt: "CREATE SEQUENCE IF NOT EXISTS public.x;",
-			want: "public.x",
-		},
-		{
-			name: "not a sequence",
-			stmt: "CREATE TABLE x (id int);",
-			want: "",
-		},
-		{
-			name: "empty string",
-			stmt: "",
-			want: "",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := extractSequenceName(tt.stmt)
-			assert.Equal(t, tt.want, result)
-		})
-	}
-}
-
-func TestExtractAlterSequenceName(t *testing.T) {
-	tests := []struct {
-		name string
-		stmt string
-		want string
-	}{
-		{
-			name: "basic alter sequence",
-			stmt: "ALTER SEQUENCE x;",
-			want: "x",
-		},
-		{
-			name: "alter sequence with schema",
-			stmt: "ALTER SEQUENCE public.x;",
-			want: "public.x",
-		},
-		{
-			name: "alter sequence with IF EXISTS",
-			stmt: "ALTER SEQUENCE IF EXISTS x;",
-			want: "x",
-		},
-		{
-			name: "not an alter sequence",
-			stmt: "ALTER TABLE x;",
-			want: "",
-		},
-		{
-			name: "empty string",
-			stmt: "",
-			want: "",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := extractAlterSequenceName(tt.stmt)
-			assert.Equal(t, tt.want, result)
-		})
-	}
-}
-
-func TestRemoveBlockComments(t *testing.T) {
+func TestNormalizeSequenceName(t *testing.T) {
 	tests := []struct {
 		name  string
 		input string
 		want  string
 	}{
 		{
-			name:  "simple block comment",
-			input: "/* note */ x;",
-			want:  " x;",
+			name:  "no schema",
+			input: "my_seq",
+			want:  "my_seq",
 		},
 		{
-			name:  "multiline block comment",
-			input: "/* note\nline2 */ x;",
-			want:  " x;",
+			name:  "with schema",
+			input: "public.my_seq",
+			want:  "my_seq",
 		},
 		{
-			name:  "no block comment",
-			input: "x;",
-			want:  "x;",
-		},
-		{
-			name:  "multiple block comments",
-			input: "/* a */ x; /* b */",
-			want:  " x; ",
-		},
-		{
-			name:  "block comment in middle",
-			input: "x /* note */ y;",
-			want:  "x  y;",
-		},
-		{
-			name:  "empty string",
-			input: "",
-			want:  "",
+			name:  "nested schema",
+			input: "app.public.my_seq",
+			want:  "my_seq",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := removeBlockComments(tt.input)
-			assert.Equal(t, tt.want, result)
-		})
-	}
-}
-
-func TestRemoveLineComments(t *testing.T) {
-	tests := []struct {
-		name  string
-		input string
-		want  string
-	}{
-		{
-			name:  "line comment at start",
-			input: "-- note\nx;",
-			want:  "x;\n",
-		},
-		{
-			name:  "line comment at end",
-			input: "x; -- note",
-			want:  "x; \n",
-		},
-		{
-			name:  "line comment in middle",
-			input: "x; -- note\ny;",
-			want:  "x; \ny;\n",
-		},
-		{
-			name:  "no line comment",
-			input: "x;",
-			want:  "x;\n",
-		},
-		{
-			name:  "multiple line comments",
-			input: "-- a\n-- b\nx;",
-			want:  "x;\n",
-		},
-		{
-			name:  "empty string",
-			input: "",
-			want:  "\n",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := removeLineComments(tt.input)
-			assert.Equal(t, tt.want, result)
-		})
-	}
-}
-
-func TestPreprocessSQL(t *testing.T) {
-	tests := []struct {
-		name  string
-		input string
-		want  string
-	}{
-		{
-			name:  "block comment removed",
-			input: "/* note */ x;",
-			want:  " x;\n",
-		},
-		{
-			name:  "line comment removed",
-			input: "-- note\nx;",
-			want:  "x;\n",
-		},
-		{
-			name:  "mixed comments removed",
-			input: "/* block */ x; -- line",
-			want:  " x; \n",
-		},
-		{
-			name:  "comment in middle of line",
-			input: "x; -- note",
-			want:  "x; \n",
-		},
-		{
-			name:  "multiline block comment",
-			input: "/*\nmulti\nline\n*/ x;",
-			want:  " x;\n",
-		},
-		{
-			name:  "empty string",
-			input: "",
-			want:  "\n",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := preprocessSQL(tt.input)
+			result := normalizeSequenceName(tt.input)
 			assert.Equal(t, tt.want, result)
 		})
 	}
