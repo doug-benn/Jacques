@@ -7,6 +7,25 @@ import (
 	"github.com/doug-benn/Jacques/internal/model"
 )
 
+// AlterResult represents the outcome of handling an ALTER TABLE statement.
+// This type distinguishes between three possible outcomes that were previously
+// all conflated in a single return value.
+type AlterResult int
+
+const (
+	// AlterNotMatched means the handler did not match the statement.
+	// The dispatcher should try the next handler.
+	AlterNotMatched AlterResult = iota
+
+	// AlterHandled means the handler matched and successfully processed the statement.
+	// The statement should not be output (discarded or folded into table definition).
+	AlterHandled
+
+	// AlterPassThrough means the handler matched but could not process the statement.
+	// The statement should be output as-is (passed through).
+	AlterPassThrough
+)
+
 var alterDiscardPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`\bOWNER\s+TO\b`),
 	regexp.MustCompile(`\bCLUSTER\s+ON\b`),
@@ -15,7 +34,7 @@ var alterDiscardPatterns = []*regexp.Regexp{
 }
 
 var notNullRE = regexp.MustCompile(`(?i)\bNOT\s+NULL\b`)
-var alterSeqOwnedBy = regexp.MustCompile(`^ALTER\s+SEQUENCE\b.*\bOWNED\s+BY\b`)
+var alterSeqOwnedBy = regexp.MustCompile(`(?i)^ALTER\s+SEQUENCE\b.*\bOWNED\s+BY\b`)
 var setDefaultRE = regexp.MustCompile(`^ALTER\s+TABLE\s+(?:ONLY\s+)?(?:([a-zA-Z_][a-zA-Z_0-9]*)\.)?([a-zA-Z_][a-zA-Z_0-9]*)\s+ALTER\s+COLUMN\s+([a-zA-Z_][a-zA-Z_0-9]*)\s+SET\s+DEFAULT\s+(.*)`)
 var setNotNullRE = regexp.MustCompile(`^ALTER\s+TABLE\s+(?:ONLY\s+)?(?:([a-zA-Z_][a-zA-Z_0-9]*)\.)?([a-zA-Z_][a-zA-Z_0-9]*)\s+ALTER\s+COLUMN\s+([a-zA-Z_][a-zA-Z_0-9]*)\s+SET\s+NOT\s+NULL\b`)
 var setTypeRE = regexp.MustCompile(`^ALTER\s+TABLE\s+(?:ONLY\s+)?(?:([a-zA-Z_][a-zA-Z_0-9]*)\.)?([a-zA-Z_][a-zA-Z_0-9]*)\s+ALTER\s+COLUMN\s+([a-zA-Z_][a-zA-Z_0-9]*)\s+(?:SET\s+DATA\s+)?TYPE\s+(.*)`)
@@ -56,20 +75,12 @@ func FindTable(tables map[string]*model.TableDef, schema, name string) *model.Ta
 	return nil
 }
 
-func RouteAlter(stmt string, tables map[string]*model.TableDef) *string {
-	stripped := strings.TrimSpace(stmt)
-
-	for _, pat := range alterDiscardPatterns {
-		if pat.MatchString(stripped) {
-			return nil
-		}
-	}
-
-	if alterSeqOwnedBy.MatchString(stripped) {
-		return nil
-	}
-
-	if m := setDefaultRE.FindStringSubmatch(stripped); m != nil {
+// handleSetDefault processes "ALTER TABLE ... ALTER COLUMN ... SET DEFAULT ..." statements.
+// Returns:
+//   - AlterHandled: the statement was matched and processed successfully
+//   - AlterNotMatched: the statement did not match this handler
+func handleSetDefault(stmt string, tables map[string]*model.TableDef) AlterResult {
+	if m := setDefaultRE.FindStringSubmatch(stmt); m != nil {
 		schema, tname, col, def := m[1], m[2], m[3], m[4]
 		td := FindTable(tables, schema, tname)
 		if td != nil {
@@ -93,10 +104,17 @@ func RouteAlter(stmt string, tables map[string]*model.TableDef) *string {
 				}
 			}
 		}
-		return nil
+		return AlterHandled
 	}
+	return AlterNotMatched
+}
 
-	if m := setNotNullRE.FindStringSubmatch(stripped); m != nil {
+// handleSetNotNull processes "ALTER TABLE ... ALTER COLUMN ... SET NOT NULL" statements.
+// Returns:
+//   - AlterHandled: the statement was matched and processed successfully
+//   - AlterNotMatched: the statement did not match this handler
+func handleSetNotNull(stmt string, tables map[string]*model.TableDef) AlterResult {
+	if m := setNotNullRE.FindStringSubmatch(stmt); m != nil {
 		schema, tname, col := m[1], m[2], m[3]
 		td := FindTable(tables, schema, tname)
 		if td != nil {
@@ -109,10 +127,17 @@ func RouteAlter(stmt string, tables map[string]*model.TableDef) *string {
 				}
 			}
 		}
-		return nil
+		return AlterHandled
 	}
+	return AlterNotMatched
+}
 
-	if m := setTypeRE.FindStringSubmatch(stripped); m != nil {
+// handleSetType processes "ALTER TABLE ... ALTER COLUMN ... TYPE ..." statements.
+// Returns:
+//   - AlterHandled: the statement was matched and processed successfully
+//   - AlterNotMatched: the statement did not match this handler
+func handleSetType(stmt string, tables map[string]*model.TableDef) AlterResult {
+	if m := setTypeRE.FindStringSubmatch(stmt); m != nil {
 		schema, tname, col, newType := m[1], m[2], m[3], m[4]
 		td := FindTable(tables, schema, tname)
 		if td != nil {
@@ -123,14 +148,29 @@ func RouteAlter(stmt string, tables map[string]*model.TableDef) *string {
 				}
 			}
 		}
-		return nil
+		return AlterHandled
 	}
+	return AlterNotMatched
+}
 
-	if dropDefaultRE.MatchString(stripped) {
-		return nil
+// handleDropDefault processes "ALTER TABLE ... ALTER COLUMN ... DROP DEFAULT" statements.
+// These are simply discarded as they don't affect the output schema.
+// Returns:
+//   - AlterHandled: the statement was matched and discarded
+//   - AlterNotMatched: the statement did not match this handler
+func handleDropDefault(stmt string, tables map[string]*model.TableDef) AlterResult {
+	if dropDefaultRE.MatchString(stmt) {
+		return AlterHandled
 	}
+	return AlterNotMatched
+}
 
-	if m := dropNotNullRE.FindStringSubmatch(stripped); m != nil {
+// handleDropNotNull processes "ALTER TABLE ... ALTER COLUMN ... DROP NOT NULL" statements.
+// Returns:
+//   - AlterHandled: the statement was matched and processed successfully
+//   - AlterNotMatched: the statement did not match this handler
+func handleDropNotNull(stmt string, tables map[string]*model.TableDef) AlterResult {
+	if m := dropNotNullRE.FindStringSubmatch(stmt); m != nil {
 		schema, tname, col := m[1], m[2], m[3]
 		td := FindTable(tables, schema, tname)
 		if td != nil {
@@ -141,10 +181,17 @@ func RouteAlter(stmt string, tables map[string]*model.TableDef) *string {
 				}
 			}
 		}
-		return nil
+		return AlterHandled
 	}
+	return AlterNotMatched
+}
 
-	if m := addPKRE.FindStringSubmatch(stripped); m != nil {
+// handleAddPK processes "ALTER TABLE ... ADD CONSTRAINT ... PRIMARY KEY ..." statements.
+// Returns:
+//   - AlterHandled: the statement was matched and processed successfully
+//   - AlterNotMatched: the statement did not match this handler
+func handleAddPK(stmt string, tables map[string]*model.TableDef) AlterResult {
+	if m := addPKRE.FindStringSubmatch(stmt); m != nil {
 		schema, tname, colsStr := m[1], m[2], m[3]
 		td := FindTable(tables, schema, tname)
 		if td != nil {
@@ -162,10 +209,17 @@ func RouteAlter(stmt string, tables map[string]*model.TableDef) *string {
 				td.TableLevelPK = colsStr
 			}
 		}
-		return nil
+		return AlterHandled
 	}
+	return AlterNotMatched
+}
 
-	if m := addUniqueRE.FindStringSubmatch(stripped); m != nil {
+// handleAddUnique processes "ALTER TABLE ... ADD CONSTRAINT ... UNIQUE ..." statements.
+// Returns:
+//   - AlterHandled: the statement was matched and processed successfully
+//   - AlterNotMatched: the statement did not match this handler
+func handleAddUnique(stmt string, tables map[string]*model.TableDef) AlterResult {
+	if m := addUniqueRE.FindStringSubmatch(stmt); m != nil {
 		schema, tname, colsStr := m[1], m[2], m[3]
 		td := FindTable(tables, schema, tname)
 		if td != nil {
@@ -181,20 +235,35 @@ func RouteAlter(stmt string, tables map[string]*model.TableDef) *string {
 				td.TableLevelUniques = append(td.TableLevelUniques, colsStr)
 			}
 		}
-		return nil
+		return AlterHandled
 	}
+	return AlterNotMatched
+}
 
-	if m := addCheckRE.FindStringSubmatch(stripped); m != nil {
+// handleAddCheck processes "ALTER TABLE ... ADD CONSTRAINT ... CHECK ..." statements.
+// Returns:
+//   - AlterHandled: the statement was matched and processed successfully
+//   - AlterNotMatched: the statement did not match this handler
+func handleAddCheck(stmt string, tables map[string]*model.TableDef) AlterResult {
+	if m := addCheckRE.FindStringSubmatch(stmt); m != nil {
 		schema, tname, constraint := m[1], m[2], m[3]
 		td := FindTable(tables, schema, tname)
 		if td != nil {
 			constraint = addConstraintRE.ReplaceAllString(constraint, "")
 			td.TableConstraints = append(td.TableConstraints, strings.TrimSuffix(constraint, ";"))
 		}
-		return nil
+		return AlterHandled
 	}
+	return AlterNotMatched
+}
 
-	if m := addFKRE.FindStringSubmatch(stripped); m != nil {
+// handleAddFK processes "ALTER TABLE ... ADD CONSTRAINT ... FOREIGN KEY ..." statements.
+// Returns:
+//   - AlterHandled: the statement was matched and FK was inlined into column definition
+//   - AlterPassThrough: the statement was matched but couldn't be inlined (e.g., self-referential FK)
+//   - AlterNotMatched: the statement did not match this handler
+func handleAddFK(stmt string, tables map[string]*model.TableDef) AlterResult {
+	if m := addFKRE.FindStringSubmatch(stmt); m != nil {
 		schema, tname, fkPart := m[1], m[2], m[3]
 		td := FindTable(tables, schema, tname)
 		if td != nil {
@@ -243,21 +312,37 @@ func RouteAlter(stmt string, tables map[string]*model.TableDef) *string {
 						// For self-referential FKs (same table), also pass through
 						// For normal FKs, just inline (no need for duplicate constraint)
 						if strings.EqualFold(tname, refTable) {
-							return &stmt // Self-referential - pass through
+							return AlterPassThrough // Self-referential - pass through
 						}
 						// Non-self-referential - just inline, don't pass through
-						return nil
+						return AlterHandled
 					}
 				}
 			}
 		}
 		// Fall through: pass through if we couldn't inline the FK
-		return &stmt
+		return AlterPassThrough
 	}
+	return AlterNotMatched
+}
 
-	if m := addColumnRE.FindStringSubmatch(stripped); m != nil {
-		// Add the column to the table so subsequent FKs can reference it
-		schema, tname, colName, colType := m[1], m[2], m[3], m[4]
+// handleAddColumn processes "ALTER TABLE ... ADD COLUMN ..." statements.
+// This adds the column to the table definition so subsequent FKs can reference it.
+// Returns:
+//   - AlterHandled: the statement was matched and column was added
+//   - AlterPassThrough: the statement was matched but column couldn't be added
+//   - AlterNotMatched: the statement did not match this handler
+func handleAddColumn(stmt string, tables map[string]*model.TableDef) AlterResult {
+	// Note: The ADD COLUMN regex can also match FK statements (they contain "ADD CONSTRAINT...").
+	// We handle this by checking for "CONSTRAINT" as the column name, which indicates
+	// it's actually a constraint statement, not a column add.
+	if m := addColumnRE.FindStringSubmatch(stmt); m != nil {
+		colName := m[3]
+		// Don't match constraint statements - they look like ADD COLUMN but aren't
+		if strings.EqualFold(colName, "CONSTRAINT") {
+			return AlterNotMatched // Not actually a column add
+		}
+		schema, tname, _, colType := m[1], m[2], m[3], m[4]
 		td := FindTable(tables, schema, tname)
 		if td != nil {
 			// Check if column already exists
@@ -276,21 +361,234 @@ func RouteAlter(stmt string, tables map[string]*model.TableDef) *string {
 					RawDef: colType,
 				})
 				// Column was added to table, don't output the ALTER statement
-				return nil
+				return AlterHandled
 			}
 		}
-		return &stmt
+		// Couldn't add column (table not found or column exists) - pass through
+		return AlterPassThrough
 	}
+	return AlterNotMatched
+}
 
-	if m := addExcludeRE.FindStringSubmatch(stripped); m != nil {
+// handleAddExclude processes "ALTER TABLE ... ADD CONSTRAINT ... EXCLUDE ..." statements.
+// Returns:
+//   - AlterHandled: the statement was matched and processed successfully
+//   - AlterNotMatched: the statement did not match this handler
+func handleAddExclude(stmt string, tables map[string]*model.TableDef) AlterResult {
+	if m := addExcludeRE.FindStringSubmatch(stmt); m != nil {
 		schema, tname, constraintName, excludeDef := m[1], m[2], m[3], m[4]
 		td := FindTable(tables, schema, tname)
 		if td != nil {
 			excludeDef = addConstraintRE.ReplaceAllString(excludeDef, "")
 			td.TableExclusions = append(td.TableExclusions, "CONSTRAINT "+constraintName+" EXCLUDE "+strings.TrimSuffix(excludeDef, ";"))
 		}
+		return AlterHandled
+	}
+	return AlterNotMatched
+}
+
+// RouteAlter routes an ALTER TABLE statement to the appropriate handler.
+// It returns:
+//   - nil: the statement was handled (discarded or folded into table definition)
+//   - &stmt: the statement should be passed through (output as-is)
+//
+// The routing is done by trying each handler in order until one matches.
+// Each handler returns an AlterResult that indicates what happened.
+func RouteAlter(stmt string, tables map[string]*model.TableDef) *string {
+	stripped := strings.TrimSpace(stmt)
+
+	// First check for discard patterns (OWNER TO, CLUSTER ON, etc.)
+	// These are simply discarded and not processed
+	for _, pat := range alterDiscardPatterns {
+		if pat.MatchString(stripped) {
+			return nil
+		}
+	}
+
+	// Check for ALTER SEQUENCE OWNED BY - also discarded
+	if alterSeqOwnedBy.MatchString(stripped) {
 		return nil
 	}
 
+	// Try each handler in sequence
+	// Use switch to clearly handle each return type
+	switch handleSetDefault(stripped, tables) {
+	case AlterHandled:
+		return nil
+	case AlterPassThrough:
+		return &stmt
+	case AlterNotMatched:
+		// Continue to next handler
+	}
+
+	switch handleSetNotNull(stripped, tables) {
+	case AlterHandled:
+		return nil
+	case AlterPassThrough:
+		return &stmt
+	case AlterNotMatched:
+		// Continue to next handler
+	}
+
+	switch handleSetType(stripped, tables) {
+	case AlterHandled:
+		return nil
+	case AlterPassThrough:
+		return &stmt
+	case AlterNotMatched:
+		// Continue to next handler
+	}
+
+	switch handleDropDefault(stripped, tables) {
+	case AlterHandled:
+		return nil
+	case AlterPassThrough:
+		return &stmt
+	case AlterNotMatched:
+		// Continue to next handler
+	}
+
+	switch handleDropNotNull(stripped, tables) {
+	case AlterHandled:
+		return nil
+	case AlterPassThrough:
+		return &stmt
+	case AlterNotMatched:
+		// Continue to next handler
+	}
+
+	switch handleAddPK(stripped, tables) {
+	case AlterHandled:
+		return nil
+	case AlterPassThrough:
+		return &stmt
+	case AlterNotMatched:
+		// Continue to next handler
+	}
+
+	switch handleAddUnique(stripped, tables) {
+	case AlterHandled:
+		return nil
+	case AlterPassThrough:
+		return &stmt
+	case AlterNotMatched:
+		// Continue to next handler
+	}
+
+	switch handleAddCheck(stripped, tables) {
+	case AlterHandled:
+		return nil
+	case AlterPassThrough:
+		return &stmt
+	case AlterNotMatched:
+		// Continue to next handler
+	}
+
+	// FK handler must come before ADD COLUMN because FK statements
+	// can look like ADD COLUMN (they contain "ADD CONSTRAINT...")
+	switch handleAddFK(stripped, tables) {
+	case AlterHandled:
+		return nil
+	case AlterPassThrough:
+		return &stmt
+	case AlterNotMatched:
+		// Continue to next handler
+	}
+
+	switch handleAddColumn(stripped, tables) {
+	case AlterHandled:
+		return nil
+	case AlterPassThrough:
+		return &stmt
+	case AlterNotMatched:
+		// Continue to next handler
+	}
+
+	switch handleAddExclude(stripped, tables) {
+	case AlterHandled:
+		return nil
+	case AlterPassThrough:
+		return &stmt
+	case AlterNotMatched:
+		// Continue to next handler
+	}
+
+	// No handler matched - pass through
 	return &stmt
+}
+
+func isAlterDiscardPattern(stmt string) bool {
+	for _, pat := range alterDiscardPatterns {
+		if pat.MatchString(stmt) {
+			return true
+		}
+	}
+	return false
+}
+
+func matchAlterSequenceOwnedBy(stmt string) bool {
+	return alterSeqOwnedBy.MatchString(stmt)
+}
+
+func matchSetDefault(stmt string) []string {
+	return setDefaultRE.FindStringSubmatch(stmt)
+}
+
+func matchSetNotNull(stmt string) []string {
+	return setNotNullRE.FindStringSubmatch(stmt)
+}
+
+func matchSetType(stmt string) []string {
+	return setTypeRE.FindStringSubmatch(stmt)
+}
+
+func matchDropNotNull(stmt string) []string {
+	return dropNotNullRE.FindStringSubmatch(stmt)
+}
+
+func matchAddPK(stmt string) []string {
+	return addPKRE.FindStringSubmatch(stmt)
+}
+
+func matchAddUnique(stmt string) []string {
+	return addUniqueRE.FindStringSubmatch(stmt)
+}
+
+func matchAddCheck(stmt string) []string {
+	return addCheckRE.FindStringSubmatch(stmt)
+}
+
+func matchAddFK(stmt string) []string {
+	return addFKRE.FindStringSubmatch(stmt)
+}
+
+func matchAddColumn(stmt string) []string {
+	return addColumnRE.FindStringSubmatch(stmt)
+}
+
+func matchDropDefault(stmt string) []string {
+	return dropDefaultRE.FindStringSubmatch(stmt)
+}
+
+func matchAddExclude(stmt string) []string {
+	return addExcludeRE.FindStringSubmatch(stmt)
+}
+
+func newTable(name string, cols []*model.ColumnDef) *model.TableDef {
+	return &model.TableDef{
+		Schema:    "",
+		Name:      name,
+		RawHeader: "CREATE TABLE " + name + " (",
+		Columns:   cols,
+	}
+}
+
+func newTableWithConstraints(name string, cols []*model.ColumnDef, constraints []string) *model.TableDef {
+	return &model.TableDef{
+		Schema:           "",
+		Name:             name,
+		RawHeader:        "CREATE TABLE " + name + " (",
+		Columns:          cols,
+		TableConstraints: constraints,
+	}
 }
