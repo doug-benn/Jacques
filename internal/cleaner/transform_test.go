@@ -9,6 +9,170 @@ import (
 	"github.com/doug-benn/Jacques/internal/model"
 )
 
+func TestCleanRawDef(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "trailing comma removed",
+			input: "int,",
+			want:  "int",
+		},
+		{
+			name:  "whitespace normalized",
+			input: "  bigint  ",
+			want:  "bigint",
+		},
+		{
+			name:  "multiple spaces normalized",
+			input: "bigint   not   null",
+			want:  "bigint not null",
+		},
+		{
+			name:  "no change needed",
+			input: "int",
+			want:  "int",
+		},
+		{
+			name:  "empty string",
+			input: "",
+			want:  "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := cleanRawDef(tt.input)
+			assert.Equal(t, tt.want, result)
+		})
+	}
+}
+
+func TestRemoveOnlyKeyword(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "ONLY keyword removed",
+			input: "ALTER TABLE ONLY x ADD y;",
+			want:  "ALTER TABLE x ADD y;",
+		},
+		{
+			name:  "no ONLY keyword",
+			input: "ALTER TABLE x ADD y;",
+			want:  "ALTER TABLE x ADD y;",
+		},
+		{
+			name:  "empty string",
+			input: "",
+			want:  "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := removeOnlyKeyword(tt.input)
+			assert.Equal(t, tt.want, result)
+		})
+	}
+}
+
+func TestRemoveNotNullAfterPrimaryKey(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "NOT NULL after PRIMARY KEY removed",
+			input: "PRIMARY KEY (id) NOT NULL",
+			want:  "PRIMARY KEY (ID) ",
+		},
+		{
+			name:  "no PRIMARY KEY NOT NULL",
+			input: "PRIMARY KEY (id)",
+			want:  "PRIMARY KEY (id)",
+		},
+		{
+			name:  "empty string",
+			input: "",
+			want:  "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := removeNotNullAfterPrimaryKey(tt.input)
+			assert.Equal(t, tt.want, result)
+		})
+	}
+}
+
+func TestIsColumnDef(t *testing.T) {
+	tests := []struct {
+		name   string
+		input  string
+		expect bool
+	}{
+		{
+			name:   "basic column",
+			input:  "id bigint",
+			expect: true,
+		},
+		{
+			name:   "column with constraints",
+			input:  "name text not null",
+			expect: true,
+		},
+		{
+			name:   "PRIMARY KEY constraint",
+			input:  "PRIMARY KEY (id)",
+			expect: false,
+		},
+		{
+			name:   "UNIQUE constraint",
+			input:  "UNIQUE (email)",
+			expect: false,
+		},
+		{
+			name:   "CHECK constraint",
+			input:  "CHECK (amount > 0)",
+			expect: false,
+		},
+		{
+			name:   "FOREIGN KEY constraint",
+			input:  "FOREIGN KEY (user_id) REFERENCES users(id)",
+			expect: false,
+		},
+		{
+			name:   "CONSTRAINT",
+			input:  "CONSTRAINT pk PRIMARY KEY (id)",
+			expect: false,
+		},
+		{
+			name:   "single word",
+			input:  "id",
+			expect: false,
+		},
+		{
+			name:   "empty string",
+			input:  "",
+			expect: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := isColumnDef(tt.input)
+			assert.Equal(t, tt.expect, result)
+		})
+	}
+}
+
 func TestTransform(t *testing.T) {
 	tests := []struct {
 		name  string
