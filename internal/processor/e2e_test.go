@@ -307,11 +307,11 @@ func runCleaner(t *testing.T, input string) string {
 	return string(output)
 }
 
-// loadFixture loads a test fixture from testdata/e2e or testdata/integration directory.
+// loadFixture loads a test fixture from testdata/e2e or testdata/fixtures directory.
 func loadFixture(t *testing.T, name string) string {
 	t.Helper()
 	// Try e2e first, then integration
-	for _, dir := range []string{"e2e", "integration"} {
+	for _, dir := range []string{"e2e", "fixtures"} {
 		path := filepath.Join("..", "..", "testdata", dir, name)
 		data, err := os.ReadFile(path)
 		if err == nil {
