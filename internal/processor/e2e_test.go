@@ -367,6 +367,15 @@ func TestE2E_PgDumpCleanRemigrate(t *testing.T) {
 	}
 
 	// E2E test fixtures that verify semantic equivalence using pg-schema-diff.
+	// Each fixture tests ONE transformation:
+	//   - noise_removal: SET, GRANT, REVOKE, COMMENT, OWNER TO removal
+	//   - sequence_to_serial: Sequence → SERIAL conversion
+	//   - alter_folding: PK, UNIQUE, CHECK folded into CREATE TABLE
+	//   - fk_inlining: Inline FK into column definitions
+	//   - only_removal: ONLY keyword removal
+	//   - block_comments: Block comment removal
+	//   - and so on...
+	//
 	// Some fixtures are skipped here and covered by integration tests instead:
 	// - partitioned_tables: pg-schema-diff doesn't support partitioned tables
 	//        (fails with "deleting partitions without dropping parent table" error)
@@ -376,12 +385,14 @@ func TestE2E_PgDumpCleanRemigrate(t *testing.T) {
 	//        because input SQL (without IF EXISTS) cannot be loaded into PostgreSQL
 	//        for schema comparison. Feature tested by TestFeature_IfExistsForDrop.
 	fixtures := []string{
-		"basic_table_input.sql",
-		"fk_check_input.sql",
-		"sequences_input.sql",
+		"noise_removal_input.sql",
+		"sequence_to_serial_input.sql",
+		"alter_folding_input.sql",
+		"fk_inlining_input.sql",
+		"only_removal_input.sql",
+		"block_comments_input.sql",
 		"fk_cascade_input.sql",
 		"fk_no_action_input.sql",
-		"types_input.sql",
 		"alter_column_input.sql",
 		"self_referential_input.sql",
 		"partial_indexes_input.sql",
@@ -397,11 +408,9 @@ func TestE2E_PgDumpCleanRemigrate(t *testing.T) {
 		"range_types_input.sql",
 		"fk_column_mapping_input.sql",
 		"schemas_input.sql",
-		"block_comments_input.sql",
 		"fk_remaining_actions_input.sql",
 		"xml_type_input.sql",
 		"alter_sequence_options_input.sql",
-		"only_removal_input.sql",
 		"quoted_identifiers_input.sql",
 	}
 
