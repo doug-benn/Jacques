@@ -15,6 +15,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 )
@@ -307,21 +308,6 @@ func runCleaner(t *testing.T, input string) string {
 	return string(output)
 }
 
-// loadFixture loads a test fixture from testdata/e2e or testdata/fixtures directory.
-func loadFixture(t *testing.T, name string) string {
-	t.Helper()
-	// Try e2e first, then integration
-	for _, dir := range []string{"e2e", "fixtures"} {
-		path := filepath.Join("..", "..", "testdata", dir, name)
-		data, err := os.ReadFile(path)
-		if err == nil {
-			return string(data)
-		}
-	}
-	require.Fail(t, "failed to read fixture: %s", name)
-	return ""
-}
-
 // TestE2E_ValidateInfrastructure is a quick sanity check that deploying the same
 // schema to two databases produces identical schemas. This validates the test
 // environment (container, pg-schema-diff, database) works correctly.
@@ -330,7 +316,7 @@ func TestE2E_ValidateInfrastructure(t *testing.T) {
 		t.Skip("E2E tests require full test run: go test ./...")
 	}
 
-	inputSQL := loadFixture(t, "basic_table_input.sql")
+	inputSQL := LoadFixture(t, "testdata/e2e/", "basic_table_input.sql")
 	ctx := context.Background()
 
 	dbNames := []string{"infra_db1", "infra_db2"}
@@ -355,76 +341,40 @@ func TestE2E_ValidateInfrastructure(t *testing.T) {
 // TestE2E_PgDumpCleanRemigrate tests that applying the cleaner to a schema
 // produces a semantically equivalent result:
 //
-// 1. Load a test fixture into a database (original)
-// 2. Pass fixture through the cleaner
-// 3. Load cleaned output into a new database (cleaned)
-// 4. Compare original and cleaned schemas
-//
-// This ensures the cleaner produces semantically equivalent schemas.
+// 1. Load a test fixture (input + expected)
+// 2. Run cleaner on input
+// 3. Compare cleaned output to expected (exact match - validates transformation correctness)
+// 4. Load input into "orig" database
+// 5. Load cleaned output into "clean" database
+// 6. Compare schemas (semantic equivalence - validates pg-schema-diff compatibility)
 func TestE2E_PgDumpCleanRemigrate(t *testing.T) {
 	if testing.Short() {
 		t.Skip("E2E tests require full test run: go test ./...")
 	}
 
-	// E2E test fixtures that verify semantic equivalence using pg-schema-diff.
-	// Each fixture tests ONE transformation:
-	//   - noise_removal: SET, GRANT, REVOKE, COMMENT, OWNER TO removal
-	//   - sequence_to_serial: Sequence → SERIAL conversion
-	//   - alter_folding: PK, UNIQUE, CHECK folded into CREATE TABLE
-	//   - fk_inlining: Inline FK into column definitions
-	//   - only_removal: ONLY keyword removal
-	//   - block_comments: Block comment removal
-	//   - and so on...
-	//
-	// Some fixtures are skipped here and covered by integration tests instead:
-	// - partitioned_tables: pg-schema-diff doesn't support partitioned tables
-	//        (fails with "deleting partitions without dropping parent table" error)
-	// - domain_types_input.sql: pg-schema-diff doesn't support DOMAIN types (only enums)
-	// - table_inheritance.sql
-	// - drop_statements_input.sql - SKIP: Cannot test "add IF EXISTS" in E2E
-	//        because input SQL (without IF EXISTS) cannot be loaded into PostgreSQL
-	//        for schema comparison. Feature tested by TestFeature_IfExistsForDrop.
-	fixtures := []string{
-		"noise_removal_input.sql",
-		"sequence_to_serial_input.sql",
-		"alter_folding_input.sql",
-		"fk_inlining_input.sql",
-		"only_removal_input.sql",
-		"block_comments_input.sql",
-		"fk_cascade_input.sql",
-		"fk_no_action_input.sql",
-		"alter_column_input.sql",
-		"self_referential_input.sql",
-		"partial_indexes_input.sql",
-		"materialized_views_input.sql",
-		"collation_input.sql",
-		"generated_columns_input.sql",
-		"identity_columns_input.sql",
-		"triggers_input.sql",
-		"functions_input.sql",
-		"rls_policies_input.sql",
-		"complex_schema_input.sql",
-		"exclusion_constraints_input.sql",
-		"range_types_input.sql",
-		"fk_column_mapping_input.sql",
-		"schemas_input.sql",
-		"fk_remaining_actions_input.sql",
-		"xml_type_input.sql",
-		"alter_sequence_options_input.sql",
-		"quoted_identifiers_input.sql",
-	}
+	// Dynamically discover all E2E fixtures from testdata/e2e/
+	fixtures := DiscoverFixtures("testdata/e2e/")
+	require.NotEmpty(t, fixtures, "no E2E fixtures found")
 
 	ctx := context.Background()
 
-	for _, fixture := range fixtures {
-		t.Run(fixture, func(t *testing.T) {
-			inputSQL := loadFixture(t, fixture)
+	for _, f := range fixtures {
+		t.Run(f.Name, func(t *testing.T) {
+			inputSQL := LoadFixture(t, f.Dir, f.Name)
+			expectedSQL := LoadFixture(t, f.Dir, strings.Replace(f.Name, "_input.sql", "_expected.sql", 1))
+
+			// Step 2: Run cleaner on fixture
+			cleanedOutput := runCleaner(t, inputSQL)
+
+			// Step 3: Compare cleaned output to expected (exact match)
+			assert.Equal(t, NormalizeSQL(expectedSQL), NormalizeSQL(cleanedOutput),
+				"Cleaned output should match expected (transformation correctness)")
 
 			dbNames := []string{"orig", "clean"}
 			connStrs := createTestDBs(t, container.connStr, dbNames...)
 			defer cleanupTestDBs(t, container.connStr, dbNames...)
 
-			// Step 1: Load fixture into original database
+			// Step 4: Load fixture into original database
 			poolOrig, err := pgxpool.New(ctx, connStrs[dbNames[0]])
 			require.NoError(t, err, "failed to connect to original database")
 			defer poolOrig.Close()
@@ -432,10 +382,7 @@ func TestE2E_PgDumpCleanRemigrate(t *testing.T) {
 			_, err = poolOrig.Exec(ctx, inputSQL)
 			require.NoError(t, err, "failed to load fixture into original database")
 
-			// Step 2: Run cleaner on fixture
-			cleanedOutput := runCleaner(t, inputSQL)
-
-			// Step 3: Load cleaned schema into second database
+			// Step 5: Load cleaned schema into second database
 			poolClean, err := pgxpool.New(ctx, connStrs[dbNames[1]])
 			require.NoError(t, err, "failed to connect to cleaned database")
 			defer poolClean.Close()
@@ -443,7 +390,7 @@ func TestE2E_PgDumpCleanRemigrate(t *testing.T) {
 			_, err = poolClean.Exec(ctx, cleanedOutput)
 			require.NoError(t, err, "failed to load cleaned schema.\nCleaned SQL:\n%s", cleanedOutput)
 
-			// Step 4: Compare schemas - should be semantically equivalent
+			// Step 6: Compare schemas - should be semantically equivalent
 			compareSchemas(t, connStrs[dbNames[0]], connStrs[dbNames[1]],
 				"Cleaner should produce semantically equivalent schema")
 		})
