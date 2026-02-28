@@ -1,11 +1,12 @@
 -- Test fixture for complex types
--- Covers: enum types, array types, JSON/JSONB
+-- Covers: enum types, array types, JSON/JSONB, composite types
+-- Edge cases: composite type used in table column
 
 -- Enum types
 CREATE TYPE order_status AS ENUM ('pending', 'processing', 'shipped', 'delivered', 'cancelled');
 CREATE TYPE priority AS ENUM ('low', 'medium', 'high', 'urgent');
 
--- Composite type (defined but not used by tables to avoid pg-schema-diff issues)
+-- Composite type (used in table columns)
 CREATE TYPE contact_info AS (
     email text,
     phone text,
@@ -62,3 +63,14 @@ CREATE TABLE public.task_assignments (
 
 ALTER TABLE ONLY public.task_assignments
     ADD CONSTRAINT task_assignments_pkey PRIMARY KEY (id);
+
+-- Table using composite type in column
+CREATE TABLE public.customers (
+    id bigint NOT NULL,
+    name text NOT NULL,
+    contact contact_info,
+    created_at timestamp without time zone NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE ONLY public.customers
+    ADD CONSTRAINT customers_pkey PRIMARY KEY (id);

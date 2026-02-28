@@ -42,3 +42,10 @@ CREATE TABLE public.task_assignments (
     extra_data jsonb,
     notes text
 );
+
+CREATE TABLE public.customers (
+    id bigint PRIMARY KEY,
+    name text NOT NULL,
+    contact contact_info,
+    created_at timestamp without time zone NOT NULL DEFAULT NOW()
+);
