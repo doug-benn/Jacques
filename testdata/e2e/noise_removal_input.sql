@@ -4,6 +4,7 @@
 --   - GRANT/REVOKE statements removed
 --   - COMMENT ON statements removed
 --   - OWNER TO statements removed
+--   - psql metacommands removed
 --
 -- Edge cases tested:
 --   - Empty SET value
@@ -12,6 +13,7 @@
 --   - Empty COMMENT
 --   - Multiple GRANT statements
 --   - GRANT/REVOKE ON FUNCTION
+--   - \set and \unset variations
 --
 -- Negative tests (should NOT be removed):
 --   - SET inside function body (part of function definition)
@@ -90,6 +92,25 @@ BEGIN
     SET statement_timeout = 3600;
 END;
 $$ LANGUAGE plpgsql;
+
+-- ============================================
+-- psql metacommands (\set, \unset)
+-- ============================================
+
+-- Edge case: \set command (should be removed)
+\set QUIET on
+
+-- Edge case: \set with variable (should be removed)
+\set HISTSIZE 1000
+
+-- Edge case: \unset command (should be removed)
+\unset QUIET
+
+-- Edge case: \set with empty value (should be removed)
+\set EMPTY_VAR
+
+\restricted
+\unrestricted
 
 -- Ensure edge case table has PK
 ALTER TABLE ONLY public.edge_cases ADD CONSTRAINT edge_cases_pkey PRIMARY KEY (id);
