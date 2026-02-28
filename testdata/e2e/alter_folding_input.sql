@@ -144,6 +144,18 @@ ALTER TABLE ONLY public.deferrable_unique
 ALTER TABLE ONLY public.deferrable_unique
     ADD CONSTRAINT deferrable_unique_email_key UNIQUE (email) DEFERRABLE INITIALLY DEFERRED;
 
+-- Test case: NOT DEFERRABLE (should fold - same as default)
+CREATE TABLE public.not_deferrable_unique (
+    id bigint NOT NULL,
+    email text NOT NULL
+);
+
+ALTER TABLE ONLY public.not_deferrable_unique
+    ADD CONSTRAINT not_deferrable_unique_pkey PRIMARY KEY (id);
+
+ALTER TABLE ONLY public.not_deferrable_unique
+    ADD CONSTRAINT not_deferrable_unique_email_key UNIQUE (email) NOT DEFERRABLE;
+
 -- Negative test: USING clause (should NOT fold - pass through)
 CREATE TABLE public.using_clause (
     id bigint NOT NULL

@@ -209,3 +209,31 @@ ALTER TABLE ONLY public.no_action_child ADD CONSTRAINT no_action_child_pkey PRIM
 
 ALTER TABLE ONLY public.no_action_child
     ADD CONSTRAINT no_action_child_parent_fkey FOREIGN KEY (parent_id) REFERENCES public.no_action_child(id) ON DELETE NO ACTION;
+
+-- ============================================
+-- Circular FK dependencies
+-- ============================================
+
+-- Edge case: Circular FK - employees reference departments, departments reference employees
+-- Both tables reference each other (cannot inline - circular dependency)
+CREATE TABLE public.departments (
+    id bigint NOT NULL,
+    name text NOT NULL,
+    manager_id bigint
+);
+
+ALTER TABLE ONLY public.departments ADD CONSTRAINT departments_pkey PRIMARY KEY (id);
+
+ALTER TABLE ONLY public.departments
+    ADD CONSTRAINT departments_manager_fkey FOREIGN KEY (manager_id) REFERENCES public.employees(id);
+
+CREATE TABLE public.employees (
+    id bigint NOT NULL,
+    name text NOT NULL,
+    department_id bigint
+);
+
+ALTER TABLE ONLY public.employees ADD CONSTRAINT employees_pkey PRIMARY KEY (id);
+
+ALTER TABLE ONLY public.employees
+    ADD CONSTRAINT employees_department_fkey FOREIGN KEY (department_id) REFERENCES public.departments(id);

@@ -1,5 +1,5 @@
 -- Test fixture for partial indexes and index options
--- Covers: CREATE INDEX with WHERE clause, INCLUDE columns
+-- Covers: CREATE INDEX with WHERE clause, INCLUDE columns, expression indexes
 
 CREATE TABLE public.users (
     id bigint NOT NULL,
@@ -28,3 +28,19 @@ CREATE INDEX idx_users_status_include ON public.users(status) INCLUDE (email, cr
 
 -- Unique index with INCLUDE
 CREATE UNIQUE INDEX idx_users_email_covering ON public.users(email) INCLUDE (status);
+
+-- ============================================
+-- Expression indexes (indexes on expressions/functions)
+-- ============================================
+
+-- Edge case: Index on lowercased column (case-insensitive search)
+CREATE INDEX idx_users_email_lower ON public.users((lower(email)));
+
+-- Edge case: Index on expression
+CREATE INDEX idx_users_status_active ON public.users((status = 'active')) WHERE status = 'active';
+
+-- Edge case: Index on function result
+CREATE INDEX idx_users_created_year ON public.users((EXTRACT(YEAR FROM created_at)));
+
+-- Index on concat expression
+CREATE INDEX idx_users_name_lower ON public.users((lower(name)));

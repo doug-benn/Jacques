@@ -1,0 +1,68 @@
+-- Test fixture for Views
+-- Covers: Simple views, view dependencies, materialized views
+-- Edge cases: Views depending on other views
+
+-- Base tables for views
+CREATE TABLE public.users (
+    id bigint NOT NULL,
+    email text NOT NULL,
+    name text NOT NULL,
+    status text NOT NULL DEFAULT 'active'
+);
+
+CREATE TABLE public.orders (
+    id bigint NOT NULL,
+    user_id bigint NOT NULL,
+    total numeric(10,2) NOT NULL,
+    status text NOT NULL DEFAULT 'pending'
+);
+
+CREATE TABLE public.products (
+    id bigint NOT NULL,
+    name text NOT NULL,
+    price numeric(10,2) NOT NULL
+);
+
+ALTER TABLE ONLY public.users ADD CONSTRAINT users_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.orders ADD CONSTRAINT orders_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.products ADD CONSTRAINT products_pkey PRIMARY KEY (id);
+
+-- Simple view
+CREATE VIEW active_users AS
+SELECT id, email, name
+FROM public.users
+WHERE status = 'active';
+
+-- View with join
+CREATE VIEW user_orders AS
+SELECT u.id as user_id, u.email, o.id as order_id, o.total
+FROM public.users u
+JOIN public.orders o ON u.id = o.user_id;
+
+-- ============================================
+-- View dependencies (view depending on view)
+-- ============================================
+
+-- Edge case: View depending on another view
+CREATE VIEW user_order_totals AS
+SELECT user_id, email, SUM(total) as total_spent
+FROM user_orders
+GROUP BY user_id, email;
+
+-- View with subquery
+CREATE VIEW expensive_products AS
+SELECT id, name, price
+FROM public.products
+WHERE price > (SELECT AVG(price) FROM public.products);
+
+-- View using multiple joins
+CREATE VIEW order_details AS
+SELECT 
+    o.id as order_id,
+    u.name as customer_name,
+    u.email,
+    p.name as product_name,
+    o.total as order_total
+FROM public.orders o
+JOIN public.users u ON o.user_id = u.id
+JOIN public.products p ON p.id = 1;

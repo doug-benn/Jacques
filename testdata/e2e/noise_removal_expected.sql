@@ -20,5 +20,3 @@ BEGIN
     SET statement_timeout = 3600;
 END;
 $$ LANGUAGE plpgsql;
-
-ALTER TABLE ONLY public.edge_cases ADD CONSTRAINT edge_cases_pkey PRIMARY KEY (id);

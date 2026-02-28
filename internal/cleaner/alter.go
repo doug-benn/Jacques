@@ -192,6 +192,13 @@ func handleDropNotNull(stmt string, tables map[string]*model.TableDef) AlterResu
 //   - AlterNotMatched: the statement did not match this handler
 func handleAddPK(stmt string, tables map[string]*model.TableDef) AlterResult {
 	if m := addPKRE.FindStringSubmatch(stmt); m != nil {
+		// Don't fold DEFERRABLE constraints - they have different semantics
+		// NOT DEFERRABLE can fold (same as default)
+		upperStmt := strings.ToUpper(stmt)
+		if strings.Contains(upperStmt, "DEFERRABLE") && !strings.Contains(upperStmt, "NOT DEFERRABLE") {
+			return AlterNotMatched
+		}
+
 		schema, tname, colsStr := m[1], m[2], m[3]
 		td := FindTable(tables, schema, tname)
 		if td != nil {
@@ -220,6 +227,13 @@ func handleAddPK(stmt string, tables map[string]*model.TableDef) AlterResult {
 //   - AlterNotMatched: the statement did not match this handler
 func handleAddUnique(stmt string, tables map[string]*model.TableDef) AlterResult {
 	if m := addUniqueRE.FindStringSubmatch(stmt); m != nil {
+		// Don't fold DEFERRABLE constraints - they have different semantics
+		// NOT DEFERRABLE can fold (same as default)
+		upperStmt := strings.ToUpper(stmt)
+		if strings.Contains(upperStmt, "DEFERRABLE") && !strings.Contains(upperStmt, "NOT DEFERRABLE") {
+			return AlterNotMatched
+		}
+
 		schema, tname, colsStr := m[1], m[2], m[3]
 		td := FindTable(tables, schema, tname)
 		if td != nil {
@@ -264,6 +278,13 @@ func handleAddCheck(stmt string, tables map[string]*model.TableDef) AlterResult 
 //   - AlterNotMatched: the statement did not match this handler
 func handleAddFK(stmt string, tables map[string]*model.TableDef) AlterResult {
 	if m := addFKRE.FindStringSubmatch(stmt); m != nil {
+		// Don't fold DEFERRABLE constraints - they have different semantics
+		// NOT DEFERRABLE can fold (same as default)
+		upperStmt := strings.ToUpper(stmt)
+		if strings.Contains(upperStmt, "DEFERRABLE") && !strings.Contains(upperStmt, "NOT DEFERRABLE") {
+			return AlterNotMatched
+		}
+
 		schema, tname, fkPart := m[1], m[2], m[3]
 		td := FindTable(tables, schema, tname)
 		if td != nil {
