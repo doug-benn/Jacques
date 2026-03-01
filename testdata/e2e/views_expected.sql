@@ -28,11 +28,6 @@ SELECT u.id as user_id, u.email, o.id as order_id, o.total
 FROM public.users u
 JOIN public.orders o ON u.id = o.user_id;
 
-CREATE VIEW user_order_totals AS
-SELECT user_id, email, SUM(total) as total_spent
-FROM user_orders
-GROUP BY user_id, email;
-
 CREATE VIEW expensive_products AS
 SELECT id, name, price
 FROM public.products
