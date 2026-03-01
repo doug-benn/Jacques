@@ -199,6 +199,11 @@ func handleAddPK(stmt string, tables map[string]*model.TableDef) AlterResult {
 			return AlterNotMatched
 		}
 
+		// Don't fold USING clause - can't be folded into CREATE TABLE
+		if strings.Contains(upperStmt, "USING") {
+			return AlterNotMatched
+		}
+
 		schema, tname, colsStr := m[1], m[2], m[3]
 		td := FindTable(tables, schema, tname)
 		if td != nil {
@@ -231,6 +236,11 @@ func handleAddUnique(stmt string, tables map[string]*model.TableDef) AlterResult
 		// NOT DEFERRABLE can fold (same as default)
 		upperStmt := strings.ToUpper(stmt)
 		if strings.Contains(upperStmt, "DEFERRABLE") && !strings.Contains(upperStmt, "NOT DEFERRABLE") {
+			return AlterNotMatched
+		}
+
+		// Don't fold USING clause - can't be folded into CREATE TABLE
+		if strings.Contains(upperStmt, "USING") {
 			return AlterNotMatched
 		}
 
@@ -282,6 +292,11 @@ func handleAddFK(stmt string, tables map[string]*model.TableDef) AlterResult {
 		// NOT DEFERRABLE can fold (same as default)
 		upperStmt := strings.ToUpper(stmt)
 		if strings.Contains(upperStmt, "DEFERRABLE") && !strings.Contains(upperStmt, "NOT DEFERRABLE") {
+			return AlterNotMatched
+		}
+
+		// Don't fold USING clause - can't be folded into CREATE TABLE
+		if strings.Contains(upperStmt, "USING") {
 			return AlterNotMatched
 		}
 

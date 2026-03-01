@@ -59,29 +59,47 @@ func LoadFixture(t *testing.T, dir, name string) string {
 }
 
 func TestFixtures(t *testing.T) {
-	tests := []struct {
-		dir       string
-		processor func(string) string
-	}{
-		{"testdata/e2e/", processDefault},
-		{"testdata/fixtures/", processExperimental},
-	}
+	// E2E fixtures: run with default mode only
+	t.Run("testdata/e2e/", func(t *testing.T) {
+		fixtures := DiscoverFixtures("testdata/e2e/")
+		require.NotEmpty(t, fixtures, "no fixtures found in testdata/e2e/")
 
-	for _, tc := range tests {
-		t.Run(tc.dir, func(t *testing.T) {
-			fixtures := DiscoverFixtures(tc.dir)
-			require.NotEmpty(t, fixtures, "no fixtures found in %s", tc.dir)
+		for _, f := range fixtures {
+			t.Run(f.Name, func(t *testing.T) {
+				input := LoadFixture(t, f.Dir, f.Name)
+				expected := LoadFixture(t, f.Dir, strings.Replace(f.Name, "_input.sql", "_expected.sql", 1))
 
-			for _, f := range fixtures {
-				t.Run(f.Name, func(t *testing.T) {
-					input := LoadFixture(t, f.Dir, f.Name)
-					expected := LoadFixture(t, f.Dir, strings.Replace(f.Name, "_input.sql", "_expected.sql", 1))
+				result := processDefault(input)
+				assert.Equal(t, NormalizeSQL(expected), NormalizeSQL(result),
+					"Cleaned output should match expected file")
+			})
+		}
+	})
 
-					result := tc.processor(input)
-					assert.Equal(t, NormalizeSQL(expected), NormalizeSQL(result),
-						"Cleaned output should match expected file")
-				})
-			}
-		})
-	}
+	// Gated fixtures: run with BOTH default and experimental modes
+	// This ensures ExperimentalFolding doesn't break default behavior
+	t.Run("testdata/fixtures/", func(t *testing.T) {
+		fixtures := DiscoverFixtures("testdata/fixtures/")
+		require.NotEmpty(t, fixtures, "no fixtures found in testdata/fixtures/")
+
+		for _, f := range fixtures {
+			t.Run(f.Name+"/default", func(t *testing.T) {
+				input := LoadFixture(t, f.Dir, f.Name)
+				expected := LoadFixture(t, f.Dir, strings.Replace(f.Name, "_input.sql", "_expected.sql", 1))
+
+				result := processDefault(input)
+				assert.Equal(t, NormalizeSQL(expected), NormalizeSQL(result),
+					"Default mode output should match expected file")
+			})
+
+			t.Run(f.Name+"/experimental", func(t *testing.T) {
+				input := LoadFixture(t, f.Dir, f.Name)
+				expected := LoadFixture(t, f.Dir, strings.Replace(f.Name, "_input.sql", "_experimental_expected.sql", 1))
+
+				result := processExperimental(input)
+				assert.Equal(t, NormalizeSQL(expected), NormalizeSQL(result),
+					"Experimental mode output should match experimental expected file")
+			})
+		}
+	})
 }

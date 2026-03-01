@@ -14,6 +14,8 @@ var noisePatterns = []*regexp.Regexp{
 	regexp.MustCompile(`^ALTER\s+\w+\s+\S+\s+OWNER\s+TO\b`),
 	regexp.MustCompile(`^\\set\s+`),
 	regexp.MustCompile(`^\\unset\s+`),
+	regexp.MustCompile(`^\\restricted\s+`),
+	regexp.MustCompile(`^\\unrestricted\s+`),
 }
 
 var (

@@ -217,6 +217,63 @@ func (tc *testContainer) close() {
 	}
 }
 
+// runSQL executes SQL in the container using psql
+func (tc *testContainer) runSQL(dbName, sql string) error {
+	// Parse connection string to get host, port, user
+	connStr := tc.connStr
+
+	// Extract connection details from URL
+	// Format: postgresql://user:pass@host:port/dbname?sslmode=...
+	connStr = strings.TrimPrefix(connStr, "postgresql://")
+
+	var user, host, port string
+	dbname := dbName
+
+	// Split user:pass@host:port
+	if atIdx := strings.Index(connStr, "@"); atIdx != -1 {
+		userPass := connStr[:atIdx]
+		connStr = connStr[atIdx+1:]
+		if colonIdx := strings.Index(userPass, ":"); colonIdx != -1 {
+			user = userPass[:colonIdx]
+		} else {
+			user = userPass
+		}
+	}
+
+	// Split host:port from dbname
+	if slashIdx := strings.Index(connStr, "/"); slashIdx != -1 {
+		hostPort := connStr[:slashIdx]
+		dbPart := connStr[slashIdx+1:]
+
+		if colonIdx := strings.Index(hostPort, ":"); colonIdx != -1 {
+			host = hostPort[:colonIdx]
+			port = hostPort[colonIdx+1:]
+		} else {
+			host = hostPort
+		}
+
+		// Remove params from dbname
+		if qIdx := strings.Index(dbPart, "?"); qIdx != -1 {
+			dbname = dbPart[:qIdx]
+		}
+	}
+
+	if user == "" {
+		user = "postgres"
+	}
+	if host == "" {
+		host = "localhost"
+	}
+	if port == "" {
+		port = "5432"
+	}
+
+	// Build psql command to run in container
+	cmd := []string{"psql", "-U", user, "-h", host, "-p", port, "-d", dbname, "-c", sql}
+	_, _, err := tc.container.Exec(tc.ctx, cmd)
+	return err
+}
+
 // compareSchemas compares two databases using pg-schema-diff.
 func compareSchemas(t *testing.T, fromDSN, toDSN, msg string) {
 	t.Helper()
@@ -356,8 +413,6 @@ func TestE2E_PgDumpCleanRemigrate(t *testing.T) {
 	fixtures := DiscoverFixtures("testdata/e2e/")
 	require.NotEmpty(t, fixtures, "no E2E fixtures found")
 
-	ctx := context.Background()
-
 	for _, f := range fixtures {
 		t.Run(f.Name, func(t *testing.T) {
 			inputSQL := LoadFixture(t, f.Dir, f.Name)
@@ -374,21 +429,13 @@ func TestE2E_PgDumpCleanRemigrate(t *testing.T) {
 			connStrs := createTestDBs(t, container.connStr, dbNames...)
 			defer cleanupTestDBs(t, container.connStr, dbNames...)
 
-			// Step 4: Load fixture into original database
-			poolOrig, err := pgxpool.New(ctx, connStrs[dbNames[0]])
-			require.NoError(t, err, "failed to connect to original database")
-			defer poolOrig.Close()
-			require.NoError(t, poolOrig.Ping(ctx))
-			_, err = poolOrig.Exec(ctx, inputSQL)
-			require.NoError(t, err, "failed to load fixture into original database")
+			// Step 4: Load fixture into original database (via psql for metacommands support)
+			require.NoError(t, container.runSQL(dbNames[0], inputSQL),
+				"failed to load fixture into original database")
 
-			// Step 5: Load cleaned schema into second database
-			poolClean, err := pgxpool.New(ctx, connStrs[dbNames[1]])
-			require.NoError(t, err, "failed to connect to cleaned database")
-			defer poolClean.Close()
-			require.NoError(t, poolClean.Ping(ctx))
-			_, err = poolClean.Exec(ctx, cleanedOutput)
-			require.NoError(t, err, "failed to load cleaned schema.\nCleaned SQL:\n%s", cleanedOutput)
+			// Step 5: Load cleaned schema into second database (via psql for metacommands support)
+			require.NoError(t, container.runSQL(dbNames[1], cleanedOutput),
+				"failed to load cleaned schema.\nCleaned SQL:\n%s", cleanedOutput)
 
 			// Step 6: Compare schemas - should be semantically equivalent
 			compareSchemas(t, connStrs[dbNames[0]], connStrs[dbNames[1]],

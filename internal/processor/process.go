@@ -40,6 +40,7 @@ var createSeqRE = regexp.MustCompile(`(?i)^CREATE\s+SEQUENCE\s+`)
 var alterSeqOwnedByRE = regexp.MustCompile(`(?i)^ALTER\s+SEQUENCE\b.*\bOWNED\s+BY\b`)
 var createTypeDomainSchemaRE = regexp.MustCompile(`(?m)^CREATE (TYPE|DOMAIN|SCHEMA)`)
 var createDomainRE = regexp.MustCompile(`(?m)^CREATE\s+DOMAIN`)
+var createCompositeTypeRE = regexp.MustCompile(`(?m)^CREATE\s+TYPE\s+.*\s+AS\s+\(`)
 var partitionOfRE = regexp.MustCompile(`(?i)^CREATE\s+TABLE\s+.*\s+PARTITION\s+OF\s+`)
 var blockCommentRE = regexp.MustCompile(`(?s)/\*.*?\*/`)
 var dropRE = regexp.MustCompile(`(?i)^DROP\s+(TABLE|INDEX|SEQUENCE|VIEW|MATERIALIZED\s+VIEW)\s+(IF\s+EXISTS\s+)?(\S+)`)
@@ -65,6 +66,10 @@ func detectStatementType(stmt string, opts *Options) StatementType {
 		// Skip DOMAIN unless ExperimentalFolding is enabled
 		if createDomainRE.MatchString(stmt) && !opts.ExperimentalFolding {
 			return StatementNoise // Skip DOMAIN when not enabled
+		}
+		// Skip COMPOSITE types unless ExperimentalFolding is enabled
+		if createCompositeTypeRE.MatchString(stmt) && !opts.ExperimentalFolding {
+			return StatementNoise // Skip COMPOSITE when not enabled
 		}
 		return StatementTypeDomainSchema
 	}
@@ -168,6 +173,32 @@ func categorizeStatements(statements []string, opts *Options) (
 	// Track seen tables to avoid duplicates in tableOrder
 	seenTable := make(map[string]bool)
 
+	// Track gated type names (DOMAIN and COMPOSITE types when not in ExperimentalFolding mode)
+	gatedTypeNames := make(map[string]bool)
+
+	// First pass: collect gated type names
+	if opts != nil && !opts.ExperimentalFolding {
+		for _, stmt := range statements {
+			stripped := strings.TrimSpace(stmt)
+			upper := strings.ToUpper(stripped)
+			if strings.HasPrefix(upper, "CREATE DOMAIN") {
+				// Extract domain name
+				re := regexp.MustCompile(`(?i)^CREATE\s+DOMAIN\s+(?:IF\s+NOT\s+EXISTS\s+)?(\S+)`)
+				if match := re.FindStringSubmatch(stripped); len(match) > 1 {
+					typeName := strings.Trim(match[1], "\"")
+					gatedTypeNames[typeName] = true
+				}
+			} else if createCompositeTypeRE.MatchString(stmt) {
+				// Extract composite type name
+				re := regexp.MustCompile(`(?i)^CREATE\s+TYPE\s+(?:IF\s+NOT\s+EXISTS\s+)?(\S+)\s+AS`)
+				if match := re.FindStringSubmatch(stripped); len(match) > 1 {
+					typeName := strings.Trim(match[1], "\"")
+					gatedTypeNames[typeName] = true
+				}
+			}
+		}
+	}
+
 	for _, stmt := range statements {
 		stmtType := detectStatementType(stmt, opts)
 
@@ -185,10 +216,35 @@ func categorizeStatements(statements []string, opts *Options) (
 			continue
 
 		case StatementTypeDomainSchema:
+			// Skip COMPOSITE types unless ExperimentalFolding is enabled
+			if createCompositeTypeRE.MatchString(stmt) && opts != nil && !opts.ExperimentalFolding {
+				passThroughs = append(passThroughs, stmt)
+				continue
+			}
 			typeStmts = append(typeStmts, stmt)
 			continue
 
 		case StatementTable:
+			// Check if table uses a gated type - if so, pass through unchanged
+			usesGatedType := false
+			if len(gatedTypeNames) > 0 {
+				for _, col := range strings.Split(stmt, ",") {
+					for typeName := range gatedTypeNames {
+						if strings.Contains(strings.ToUpper(col), strings.ToUpper(typeName)) {
+							usesGatedType = true
+							break
+						}
+					}
+					if usesGatedType {
+						break
+					}
+				}
+			}
+			if usesGatedType {
+				passThroughs = append(passThroughs, stmt)
+				continue
+			}
+
 			td, err := cleaner.ParseCreateTable(stmt)
 			if err != nil {
 				passThroughs = append(passThroughs, stmt)
@@ -213,6 +269,14 @@ func categorizeStatements(statements []string, opts *Options) (
 			continue
 
 		case StatementAlter:
+			// Don't fold MATCH FULL/PARTIAL - requires ExperimentalFolding
+			upperStmt := strings.ToUpper(stmt)
+			if (strings.Contains(upperStmt, "MATCH FULL") || strings.Contains(upperStmt, "MATCH PARTIAL")) &&
+				(opts == nil || !opts.ExperimentalFolding) {
+				passThroughs = append(passThroughs, stmt)
+				continue
+			}
+
 			result := cleaner.RouteAlter(stmt, tables)
 			if result == nil {
 				continue
@@ -457,11 +521,21 @@ func buildOutput(
 
 	// First, collect all types from both typeStmts and passThroughs
 	// This ensures types are always defined before tables that use them
-	allTypes := append([]string{}, typeStmts...)
+	// Filter COMPOSITE types unless ExperimentalFolding is enabled
+	var allTypes []string
+	for _, stmt := range typeStmts {
+		if createCompositeTypeRE.MatchString(stmt) && !opts.ExperimentalFolding {
+			continue // Skip COMPOSITE types when not enabled
+		}
+		allTypes = append(allTypes, stmt)
+	}
 	for _, stmt := range passThroughs {
 		upper := strings.ToUpper(strings.TrimSpace(stmt))
-		// Only include DOMAIN if ExperimentalFolding is enabled
+		// Only include DOMAIN and COMPOSITE if ExperimentalFolding is enabled
 		if strings.HasPrefix(upper, "CREATE TYPE") {
+			if createCompositeTypeRE.MatchString(stmt) && !opts.ExperimentalFolding {
+				continue // Skip COMPOSITE types when not enabled
+			}
 			allTypes = append(allTypes, stmt)
 		} else if strings.HasPrefix(upper, "CREATE DOMAIN") && opts.ExperimentalFolding {
 			allTypes = append(allTypes, stmt)
@@ -492,8 +566,13 @@ func buildOutput(
 
 		// Skip types, sequences, and tables (already handled)
 		// Exception: partition children when ExperimentalFolding is enabled
+		// Exception: tables using gated types (DOMAIN, COMPOSITE) when not ExperimentalFolding
 		if strings.HasPrefix(upper, "CREATE TABLE") {
-			if opts.ExperimentalFolding && partitionOfRE.MatchString(stripped) {
+			if opts != nil && opts.ExperimentalFolding && partitionOfRE.MatchString(stripped) {
+				output = append(output, stmt)
+			}
+			// In default mode, tables using gated types need to be output
+			if opts == nil || !opts.ExperimentalFolding {
 				output = append(output, stmt)
 			}
 			continue
