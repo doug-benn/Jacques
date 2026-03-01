@@ -316,7 +316,7 @@ func TestE2E_ValidateInfrastructure(t *testing.T) {
 		t.Skip("E2E tests require full test run: go test ./...")
 	}
 
-	inputSQL := LoadFixture(t, "testdata/e2e/", "_basic_table_input.sql")
+	inputSQL := LoadFixture(t, "testdata/e2e/", "_basic_input.sql")
 	ctx := context.Background()
 
 	dbNames := []string{"infra_db1", "infra_db2"}
