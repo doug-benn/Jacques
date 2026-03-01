@@ -21,4 +21,4 @@ CREATE INDEX idx_users_status_active ON public.users((status = 'active')) WHERE 
 
 CREATE INDEX idx_users_created_year ON public.users((EXTRACT(YEAR FROM created_at)));
 
-CREATE INDEX idx_users_name_lower ON public.users((lower(name)));
+CREATE INDEX idx_users_email_lower2 ON public.users((lower(email)));

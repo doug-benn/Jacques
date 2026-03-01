@@ -279,7 +279,7 @@ func TestIntegration_DetectStatementType(t *testing.T) {
 			name: "DROP TABLE without ExperimentalFolding",
 			stmt: "DROP TABLE foo;",
 			opts: &Options{},
-			want: StatementUnknown,
+			want: StatementDrop, // DROP IF EXISTS is now default
 		},
 		{
 			name: "CREATE DOMAIN with ExperimentalFolding",
@@ -291,13 +291,25 @@ func TestIntegration_DetectStatementType(t *testing.T) {
 			name: "CREATE DOMAIN without ExperimentalFolding",
 			stmt: "CREATE DOMAIN my_domain AS int;",
 			opts: &Options{},
-			want: StatementNoise,
+			want: StatementTypeDomainSchema, // Basic DOMAIN is now default
+		},
+		{
+			name: "CREATE DOMAIN with CHECK without ExperimentalFolding",
+			stmt: "CREATE DOMAIN my_domain AS int CHECK (VALUE > 0);",
+			opts: &Options{},
+			want: StatementNoise, // DOMAIN with CHECK is gated
+		},
+		{
+			name: "CREATE DOMAIN with CHECK with ExperimentalFolding",
+			stmt: "CREATE DOMAIN my_domain AS int CHECK (VALUE > 0);",
+			opts: &Options{ExperimentalFolding: true},
+			want: StatementTypeDomainSchema,
 		},
 		{
 			name: "Partition child without ExperimentalFolding",
 			stmt: "CREATE TABLE foo_1 PARTITION OF foo FOR VALUES FROM (1) TO (100);",
 			opts: &Options{},
-			want: StatementNoise,
+			want: StatementTable,
 		},
 		{
 			name: "Partition child with ExperimentalFolding",

@@ -40,6 +40,7 @@ var createSeqRE = regexp.MustCompile(`(?i)^CREATE\s+SEQUENCE\s+`)
 var alterSeqOwnedByRE = regexp.MustCompile(`(?i)^ALTER\s+SEQUENCE\b.*\bOWNED\s+BY\b`)
 var createTypeDomainSchemaRE = regexp.MustCompile(`(?m)^CREATE (TYPE|DOMAIN|SCHEMA)`)
 var createDomainRE = regexp.MustCompile(`(?m)^CREATE\s+DOMAIN`)
+var createDomainWithCheckRE = regexp.MustCompile(`(?i)^CREATE\s+DOMAIN[\s\S]*?CHECK`)
 var createCompositeTypeRE = regexp.MustCompile(`(?m)^CREATE\s+TYPE\s+.*\s+AS\s+\(`)
 var partitionOfRE = regexp.MustCompile(`(?i)^CREATE\s+TABLE\s+.*\s+PARTITION\s+OF\s+`)
 var blockCommentRE = regexp.MustCompile(`(?s)/\*.*?\*/`)
@@ -63,9 +64,9 @@ func detectStatementType(stmt string, opts *Options) StatementType {
 
 	// Check for CREATE TYPE, DOMAIN, or SCHEMA
 	if createTypeDomainSchemaRE.MatchString(stmt) {
-		// Skip DOMAIN unless ExperimentalFolding is enabled
-		if createDomainRE.MatchString(stmt) && !opts.ExperimentalFolding {
-			return StatementNoise // Skip DOMAIN when not enabled
+		// Skip DOMAIN with CHECK constraints unless ExperimentalFolding is enabled
+		if createDomainWithCheckRE.MatchString(stmt) && !opts.ExperimentalFolding {
+			return StatementNoise // Skip DOMAIN with CHECK when not enabled
 		}
 		// Skip COMPOSITE types unless ExperimentalFolding is enabled
 		if createCompositeTypeRE.MatchString(stmt) && !opts.ExperimentalFolding {
@@ -86,10 +87,6 @@ func detectStatementType(stmt string, opts *Options) StatementType {
 
 	// Check for CREATE TABLE
 	if strings.HasPrefix(upper, "CREATE TABLE") {
-		// Skip partition children unless ExperimentalFolding is enabled
-		if partitionOfRE.MatchString(stripped) && !opts.ExperimentalFolding {
-			return StatementNoise
-		}
 		return StatementTable
 	}
 
@@ -98,8 +95,8 @@ func detectStatementType(stmt string, opts *Options) StatementType {
 		return StatementAlter
 	}
 
-	// Check for DROP (only when ExperimentalFolding is enabled)
-	if strings.HasPrefix(upper, "DROP ") && opts.ExperimentalFolding {
+	// Check for DROP statements - add IF EXISTS for idempotency
+	if strings.HasPrefix(upper, "DROP ") {
 		dropMatch := dropRE.FindStringSubmatch(stmt)
 		if dropMatch != nil && dropMatch[2] == "" {
 			return StatementDrop
@@ -181,7 +178,8 @@ func categorizeStatements(statements []string, opts *Options) (
 		for _, stmt := range statements {
 			stripped := strings.TrimSpace(stmt)
 			upper := strings.ToUpper(stripped)
-			if strings.HasPrefix(upper, "CREATE DOMAIN") {
+			// Only gate DOMAIN with CHECK constraints (not basic domains)
+			if strings.HasPrefix(upper, "CREATE DOMAIN") && createDomainWithCheckRE.MatchString(stmt) {
 				// Extract domain name
 				re := regexp.MustCompile(`(?i)^CREATE\s+DOMAIN\s+(?:IF\s+NOT\s+EXISTS\s+)?(\S+)`)
 				if match := re.FindStringSubmatch(stripped); len(match) > 1 {
@@ -218,6 +216,11 @@ func categorizeStatements(statements []string, opts *Options) (
 		case StatementTypeDomainSchema:
 			// Skip COMPOSITE types unless ExperimentalFolding is enabled
 			if createCompositeTypeRE.MatchString(stmt) && opts != nil && !opts.ExperimentalFolding {
+				passThroughs = append(passThroughs, stmt)
+				continue
+			}
+			// Skip DOMAIN with CHECK unless ExperimentalFolding is enabled
+			if createDomainWithCheckRE.MatchString(stmt) && opts != nil && !opts.ExperimentalFolding {
 				passThroughs = append(passThroughs, stmt)
 				continue
 			}
@@ -521,23 +524,31 @@ func buildOutput(
 
 	// First, collect all types from both typeStmts and passThroughs
 	// This ensures types are always defined before tables that use them
-	// Filter COMPOSITE types unless ExperimentalFolding is enabled
+	// Filter COMPOSITE and DOMAIN with CHECK unless ExperimentalFolding is enabled
 	var allTypes []string
 	for _, stmt := range typeStmts {
 		if createCompositeTypeRE.MatchString(stmt) && !opts.ExperimentalFolding {
 			continue // Skip COMPOSITE types when not enabled
 		}
+		if createDomainWithCheckRE.MatchString(stmt) && !opts.ExperimentalFolding {
+			continue // Skip DOMAIN with CHECK when not enabled
+		}
 		allTypes = append(allTypes, stmt)
 	}
 	for _, stmt := range passThroughs {
 		upper := strings.ToUpper(strings.TrimSpace(stmt))
-		// Only include DOMAIN and COMPOSITE if ExperimentalFolding is enabled
+		// Handle TYPE and DOMAIN
 		if strings.HasPrefix(upper, "CREATE TYPE") {
+			// Skip COMPOSITE types unless ExperimentalFolding is enabled
 			if createCompositeTypeRE.MatchString(stmt) && !opts.ExperimentalFolding {
 				continue // Skip COMPOSITE types when not enabled
 			}
 			allTypes = append(allTypes, stmt)
-		} else if strings.HasPrefix(upper, "CREATE DOMAIN") && opts.ExperimentalFolding {
+		} else if strings.HasPrefix(upper, "CREATE DOMAIN") {
+			// Skip DOMAIN with CHECK unless ExperimentalFolding is enabled
+			if createDomainWithCheckRE.MatchString(stmt) && !opts.ExperimentalFolding {
+				continue // Skip DOMAIN with CHECK when not enabled
+			}
 			allTypes = append(allTypes, stmt)
 		}
 	}
@@ -551,9 +562,13 @@ func buildOutput(
 	// Output tables
 	for _, key := range tableOrder {
 		if td, ok := tables[key]; ok {
-			// Skip INHERITS clause unless ExperimentalFolding is enabled
+			// Skip complex INHERITS clause unless ExperimentalFolding is enabled
+			// Simple inheritance (single parent) is now default
 			if td.Inherits != "" && !opts.ExperimentalFolding {
-				td.Inherits = ""
+				// Complex inheritance: multiple parents (comma-separated)
+				if strings.Contains(td.Inherits, ",") {
+					td.Inherits = ""
+				}
 			}
 			output = append(output, cleaner.RenderTable(td))
 		}

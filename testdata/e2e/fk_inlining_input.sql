@@ -1,21 +1,7 @@
--- Test fixture for FK inlining
--- Transformations tested:
---   - Simple FK inlined into column definition
---   - FK with ON DELETE inlined
---   - FK with ON UPDATE inlined
---   - Multi-column FK (cannot inline - passes through)
---   - FK with NOT VALID (cannot inline - passes through)
---   - FK with quoted constraint name (inlined)
---
--- Edge cases tested:
---   - FK with ON DELETE SET DEFAULT
---   - FK with ON DELETE SET NULL
---   - Self-referential FK
---
--- Negative tests (should NOT be inlined):
---   - FK with MATCH FULL
---   - FK with MATCH PARTIAL
---   - Multi-column FK
+-- Test fixture for FK inlining (E2E testable)
+-- Covers: Simple FK inlining, ON DELETE CASCADE/SET NULL/SET DEFAULT,
+-- self-referential FK, multi-column FK, NOT VALID FK, circular dependencies
+-- Note: MATCH FULL/PARTIAL requires ExperimentalFolding
 
 -- Simple FK (should inline)
 CREATE TABLE public.categories (
@@ -120,10 +106,6 @@ ALTER TABLE ONLY public.queues
 ALTER TABLE ONLY public.queues
     ADD CONSTRAINT queues_parent_fkey FOREIGN KEY (parent_id) REFERENCES queues(id) NOT VALID;
 
--- ============================================
--- Edge cases for FK inlining
--- ============================================
-
 -- Edge case: FK with ON DELETE SET DEFAULT (should inline)
 CREATE TABLE public.set_default_child (
     id bigint NOT NULL,
@@ -161,61 +143,7 @@ ALTER TABLE ONLY public.employee_hierarchy
 ALTER TABLE ONLY public.employee_hierarchy
     ADD CONSTRAINT employee_hierarchy_manager_fkey FOREIGN KEY (manager_id) REFERENCES public.employee_hierarchy(id);
 
--- ============================================
--- Negative tests for FK inlining
--- ============================================
-
--- Negative test: FK with MATCH FULL (cannot inline - passes through)
-CREATE TABLE public.match_full_a (
-    id bigint NOT NULL
-);
-
-ALTER TABLE ONLY public.match_full_a ADD CONSTRAINT match_full_a_pkey PRIMARY KEY (id);
-
-CREATE TABLE public.match_full_b (
-    id bigint NOT NULL,
-    ref_id bigint NOT NULL
-);
-
-ALTER TABLE ONLY public.match_full_b ADD CONSTRAINT match_full_b_pkey PRIMARY KEY (id);
-
-ALTER TABLE ONLY public.match_full_b
-    ADD CONSTRAINT match_full_fkey FOREIGN KEY (ref_id) REFERENCES public.match_full_a(id) MATCH FULL;
-
--- Negative test: FK with MATCH PARTIAL (cannot inline - passes through)
-CREATE TABLE public.match_partial_a (
-    id bigint NOT NULL
-);
-
-ALTER TABLE ONLY public.match_partial_a ADD CONSTRAINT match_partial_a_pkey PRIMARY KEY (id);
-
-CREATE TABLE public.match_partial_b (
-    id bigint NOT NULL,
-    ref_id bigint
-);
-
-ALTER TABLE ONLY public.match_partial_b ADD CONSTRAINT match_partial_b_pkey PRIMARY KEY (id);
-
-ALTER TABLE ONLY public.match_partial_b
-    ADD CONSTRAINT match_partial_fkey FOREIGN KEY (ref_id) REFERENCES public.match_partial_a(id) MATCH PARTIAL;
-
--- Negative test: FK with ON DELETE NO ACTION (should pass through)
-CREATE TABLE public.no_action_child (
-    id bigint NOT NULL,
-    parent_id bigint
-);
-
-ALTER TABLE ONLY public.no_action_child ADD CONSTRAINT no_action_child_pkey PRIMARY KEY (id);
-
-ALTER TABLE ONLY public.no_action_child
-    ADD CONSTRAINT no_action_child_parent_fkey FOREIGN KEY (parent_id) REFERENCES public.no_action_child(id) ON DELETE NO ACTION;
-
--- ============================================
--- Circular FK dependencies
--- ============================================
-
 -- Edge case: Circular FK - employees reference departments, departments reference employees
--- Both tables reference each other (cannot inline - circular dependency)
 CREATE TABLE public.departments (
     id bigint NOT NULL,
     name text NOT NULL,
@@ -237,3 +165,14 @@ ALTER TABLE ONLY public.employees ADD CONSTRAINT employees_pkey PRIMARY KEY (id)
 
 ALTER TABLE ONLY public.employees
     ADD CONSTRAINT employees_department_fkey FOREIGN KEY (department_id) REFERENCES public.departments(id);
+
+-- Negative test: FK with ON DELETE NO ACTION (should pass through)
+CREATE TABLE public.no_action_child (
+    id bigint NOT NULL,
+    parent_id bigint
+);
+
+ALTER TABLE ONLY public.no_action_child ADD CONSTRAINT no_action_child_pkey PRIMARY KEY (id);
+
+ALTER TABLE ONLY public.no_action_child
+    ADD CONSTRAINT no_action_child_parent_fkey FOREIGN KEY (parent_id) REFERENCES public.no_action_child(id) ON DELETE NO ACTION;

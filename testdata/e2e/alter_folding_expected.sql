@@ -66,7 +66,7 @@ CREATE TABLE public.not_deferrable_unique (
 );
 
 CREATE TABLE public.using_clause (
-    id bigint PRIMARY KEY
+    id bigint NOT NULL
 );
 
 ALTER TABLE public.deferrable_unique
@@ -77,3 +77,6 @@ ALTER TABLE public.deferrable_unique
 
 ALTER TABLE public.not_deferrable_unique
     ADD CONSTRAINT not_deferrable_unique_pkey PRIMARY KEY (id);
+
+ALTER TABLE public.using_clause
+    ADD CONSTRAINT using_clause_pkey PRIMARY KEY (id) USING btree;

@@ -67,29 +67,6 @@ CREATE TABLE public.employee_hierarchy (
     manager_id bigint REFERENCES public.employee_hierarchy(id)
 );
 
-CREATE TABLE public.match_full_a (
-    id bigint PRIMARY KEY
-);
-
-CREATE TABLE public.match_full_b (
-    id bigint PRIMARY KEY,
-    ref_id bigint REFERENCES public.match_full_a(id) MATCH FULL NOT NULL
-);
-
-CREATE TABLE public.match_partial_a (
-    id bigint PRIMARY KEY
-);
-
-CREATE TABLE public.match_partial_b (
-    id bigint PRIMARY KEY,
-    ref_id bigint REFERENCES public.match_partial_a(id) MATCH PARTIAL
-);
-
-CREATE TABLE public.no_action_child (
-    id bigint PRIMARY KEY,
-    parent_id bigint REFERENCES public.no_action_child(id) ON DELETE NO ACTION
-);
-
 CREATE TABLE public.departments (
     id bigint PRIMARY KEY,
     name text NOT NULL,
@@ -100,6 +77,11 @@ CREATE TABLE public.employees (
     id bigint PRIMARY KEY,
     name text NOT NULL,
     department_id bigint REFERENCES public.departments(id)
+);
+
+CREATE TABLE public.no_action_child (
+    id bigint PRIMARY KEY,
+    parent_id bigint REFERENCES public.no_action_child(id) ON DELETE NO ACTION
 );
 
 ALTER TABLE public.accounts

@@ -1,5 +1,7 @@
--- Test fixture for IF EXISTS on DROP statements
--- This mimics pg_dump --schema-only --clean output where DROP statements exist before CREATE
+-- Test fixture for DROP statements with IF EXISTS (E2E testable)
+-- DROP statements work with E2E because both DROP and DROP IF EXISTS
+-- produce the same final schema on an empty database
+
 DROP TABLE public.users;
 DROP TABLE public.orders;
 DROP INDEX idx_users_email;

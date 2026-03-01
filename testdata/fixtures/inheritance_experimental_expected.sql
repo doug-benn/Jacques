@@ -39,4 +39,4 @@ CREATE TABLE public.profiles (
 
 CREATE TABLE public.user_profiles (
     avatar_url text
-);
+) INHERITS (public.accounts, public.profiles);
