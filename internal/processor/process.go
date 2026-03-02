@@ -272,14 +272,6 @@ func categorizeStatements(statements []string, opts *Options) (
 			continue
 
 		case StatementAlter:
-			// Don't fold MATCH FULL/PARTIAL - requires ExperimentalFolding
-			upperStmt := strings.ToUpper(stmt)
-			if (strings.Contains(upperStmt, "MATCH FULL") || strings.Contains(upperStmt, "MATCH PARTIAL")) &&
-				(opts == nil || !opts.ExperimentalFolding) {
-				passThroughs = append(passThroughs, stmt)
-				continue
-			}
-
 			result := cleaner.RouteAlter(stmt, tables)
 			if result == nil {
 				continue

@@ -1,7 +1,7 @@
 -- Test fixture for FK inlining (E2E testable)
--- Covers: Simple FK inlining, ON DELETE CASCADE/SET NULL/SET DEFAULT,
--- self-referential FK, multi-column FK, NOT VALID FK, circular dependencies
--- Note: MATCH FULL/PARTIAL requires ExperimentalFolding
+-- Covers: Simple FK inlining, ON DELETE CASCADE/SET NULL/SET DEFAULT/RESTRICT,
+-- ON UPDATE CASCADE/SET NULL, self-referential FK, multi-column FK, NOT VALID FK, circular dependencies
+-- Also covers: MATCH FULL, MATCH PARTIAL (to test if E2E works)
 
 -- Simple FK (should inline)
 CREATE TABLE public.categories (
@@ -176,3 +176,62 @@ ALTER TABLE ONLY public.no_action_child ADD CONSTRAINT no_action_child_pkey PRIM
 
 ALTER TABLE ONLY public.no_action_child
     ADD CONSTRAINT no_action_child_parent_fkey FOREIGN KEY (parent_id) REFERENCES public.no_action_child(id) ON DELETE NO ACTION;
+
+-- Additional edge cases from fk_remaining_actions
+-- ON DELETE RESTRICT
+CREATE TABLE public.categories2 (
+    id bigint NOT NULL,
+    parent_id bigint,
+    name text NOT NULL
+);
+
+ALTER TABLE ONLY public.categories2 ADD CONSTRAINT categories2_pkey PRIMARY KEY (id);
+
+ALTER TABLE ONLY public.categories2
+    ADD CONSTRAINT categories2_parent_fkey FOREIGN KEY (parent_id) REFERENCES public.categories2(id) ON DELETE RESTRICT;
+
+-- ON UPDATE CASCADE
+CREATE TABLE public.order_items2 (
+    id bigint NOT NULL,
+    order_id bigint NOT NULL,
+    product_id bigint NOT NULL
+);
+
+ALTER TABLE ONLY public.order_items2 ADD CONSTRAINT order_items2_pkey PRIMARY KEY (id);
+
+ALTER TABLE ONLY public.order_items2
+    ADD CONSTRAINT order_items2_order_fkey FOREIGN KEY (order_id) REFERENCES public.orders(id) ON UPDATE CASCADE;
+
+-- MATCH FULL test
+CREATE TABLE public.match_full_a (
+    id bigint NOT NULL
+);
+
+ALTER TABLE ONLY public.match_full_a ADD CONSTRAINT match_full_a_pkey PRIMARY KEY (id);
+
+CREATE TABLE public.match_full_b (
+    id bigint NOT NULL,
+    ref_id bigint NOT NULL
+);
+
+ALTER TABLE ONLY public.match_full_b ADD CONSTRAINT match_full_b_pkey PRIMARY KEY (id);
+
+ALTER TABLE ONLY public.match_full_b
+    ADD CONSTRAINT match_full_fkey FOREIGN KEY (ref_id) REFERENCES public.match_full_a(id) MATCH FULL;
+
+-- MATCH PARTIAL test
+CREATE TABLE public.match_partial_a (
+    id bigint NOT NULL
+);
+
+ALTER TABLE ONLY public.match_partial_a ADD CONSTRAINT match_partial_a_pkey PRIMARY KEY (id);
+
+CREATE TABLE public.match_partial_b (
+    id bigint NOT NULL,
+    ref_id bigint
+);
+
+ALTER TABLE ONLY public.match_partial_b ADD CONSTRAINT match_partial_b_pkey PRIMARY KEY (id);
+
+ALTER TABLE ONLY public.match_partial_b
+    ADD CONSTRAINT match_partial_fkey FOREIGN KEY (ref_id) REFERENCES public.match_partial_a(id) MATCH PARTIAL;

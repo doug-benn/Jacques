@@ -2,6 +2,10 @@ CREATE TYPE order_status AS ENUM ('pending', 'processing', 'shipped', 'delivered
 
 CREATE TYPE priority AS ENUM ('low', 'medium', 'high', 'urgent');
 
+CREATE DOMAIN public.email AS text;
+
+CREATE DOMAIN public.status AS text;
+
 CREATE TABLE public.tickets (
     id bigint PRIMARY KEY,
     title text NOT NULL,
@@ -36,6 +40,18 @@ CREATE TABLE public.task_assignments (
     notes text
 );
 
+CREATE TABLE public.users (
+    id bigint PRIMARY KEY,
+    email public.email NOT NULL,
+    created_at timestamp without time zone NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE public.orders (
+    id bigint PRIMARY KEY,
+    user_id bigint NOT NULL,
+    status public.status NOT NULL DEFAULT 'pending'
+);
+
 CREATE TABLE public.reservations (
     id bigint PRIMARY KEY,
     room_number text NOT NULL,
@@ -50,7 +66,7 @@ CREATE TABLE public.inventory (
     last_updated timestamp without time zone NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE public.users (
+CREATE TABLE public.user_profiles (
     id bigint PRIMARY KEY,
     email text NOT NULL,
     birth_date date,

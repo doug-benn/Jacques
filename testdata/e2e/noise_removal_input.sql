@@ -5,6 +5,7 @@
 --   - COMMENT ON statements removed
 --   - OWNER TO statements removed
 --   - psql metacommands removed
+--   - Block comments removed
 --
 -- Edge cases tested:
 --   - Empty SET value
@@ -14,9 +15,12 @@
 --   - Multiple GRANT statements
 --   - GRANT/REVOKE ON FUNCTION
 --   - \set and \unset variations
+--   - Block comments in various positions
 --
 -- Negative tests (should NOT be removed):
 --   - SET inside function body (part of function definition)
+
+/* Header comment for the schema */
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -24,12 +28,16 @@ SET idle_in_transaction_session_timeout = 0;
 SET constraint_exclusion = partition;
 SET row_security = on;
 
+/* Table with inline block comment */
+
 CREATE TABLE public.users (
     id bigint NOT NULL,
     email text NOT NULL,
     name text NOT NULL,
     created_at timestamp without time zone NOT NULL DEFAULT NOW()
 );
+
+/* Inline block comment in table definition */
 
 ALTER TABLE public.users OWNER TO testuser;
 
@@ -41,11 +49,15 @@ COMMENT ON TABLE public.users IS 'Application users table';
 COMMENT ON COLUMN public.users.email IS 'User email address';
 COMMENT ON COLUMN public.users.name IS 'User full name';
 
+/* Another table for testing */
+
 CREATE TABLE public.products (
     id bigint NOT NULL,
     name text NOT NULL,
     price numeric(10,2) NOT NULL
 );
+
+/* Multiple block comments between statements */
 
 ALTER TABLE public.products OWNER TO admin;
 
@@ -64,6 +76,8 @@ SET statement_timeout = ;
 -- Edge case: Multi-statement SET
 SET a = 1; SET b = 2;
 
+/* Block comment around edge case */
+
 -- Edge case: GRANT with multiple privileges
 GRANT SELECT, INSERT, UPDATE ON public.users TO app_user;
 
@@ -80,6 +94,8 @@ GRANT EXECUTE ON FUNCTION public.my_function() TO app_user;
 
 -- Edge case: REVOKE ON FUNCTION (should be removed)
 REVOKE EXECUTE ON FUNCTION public.my_function() FROM app_user;
+
+/* Block comment around table */
 
 -- Edge case: Table for edge cases
 CREATE TABLE public.edge_cases (
@@ -111,6 +127,8 @@ $$ LANGUAGE plpgsql;
 
 \restricted
 \unrestricted
+
+/* Footer comment */
 
 -- Ensure edge case table has PK
 ALTER TABLE ONLY public.edge_cases ADD CONSTRAINT edge_cases_pkey PRIMARY KEY (id);

@@ -1,10 +1,14 @@
 -- Test fixture for types (E2E testable)
--- Covers: enum types, array types, JSON/JSONB, range types
+-- Covers: enum types, array types, JSON/JSONB, range types, basic DOMAIN types
 -- Note: COMPOSITE types and DOMAIN with CHECK are gated under ExperimentalFolding
 
 -- Enum types
 CREATE TYPE order_status AS ENUM ('pending', 'processing', 'shipped', 'delivered', 'cancelled');
 CREATE TYPE priority AS ENUM ('low', 'medium', 'high', 'urgent');
+
+-- Basic DOMAIN types (without CHECK)
+CREATE DOMAIN public.email AS text;
+CREATE DOMAIN public.status AS text;
 
 -- Table with enum type
 CREATE TABLE public.tickets (
@@ -56,6 +60,26 @@ CREATE TABLE public.task_assignments (
 ALTER TABLE ONLY public.task_assignments
     ADD CONSTRAINT task_assignments_pkey PRIMARY KEY (id);
 
+-- Table using basic DOMAIN
+CREATE TABLE public.users (
+    id bigint NOT NULL,
+    email public.email NOT NULL,
+    created_at timestamp without time zone NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE ONLY public.users
+    ADD CONSTRAINT users_pkey PRIMARY KEY (id);
+
+-- Table with domain type
+CREATE TABLE public.orders (
+    id bigint NOT NULL,
+    user_id bigint NOT NULL,
+    status public.status NOT NULL DEFAULT 'pending'
+);
+
+ALTER TABLE ONLY public.orders
+    ADD CONSTRAINT orders_pkey PRIMARY KEY (id);
+
 -- Range types
 CREATE TABLE public.reservations (
     id bigint NOT NULL,
@@ -77,7 +101,7 @@ CREATE TABLE public.inventory (
 ALTER TABLE ONLY public.inventory
     ADD CONSTRAINT inventory_pkey PRIMARY KEY (id);
 
-CREATE TABLE public.users (
+CREATE TABLE public.user_profiles (
     id bigint NOT NULL,
     email text NOT NULL,
     birth_date date,
@@ -85,8 +109,8 @@ CREATE TABLE public.users (
     created_at timestamp without time zone NOT NULL DEFAULT NOW()
 );
 
-ALTER TABLE ONLY public.users
-    ADD CONSTRAINT users_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.user_profiles
+    ADD CONSTRAINT user_profiles_pkey PRIMARY KEY (id);
 
 CREATE TABLE public.order_versions (
     id bigint NOT NULL,

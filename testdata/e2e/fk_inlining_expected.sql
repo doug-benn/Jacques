@@ -84,6 +84,36 @@ CREATE TABLE public.no_action_child (
     parent_id bigint REFERENCES public.no_action_child(id) ON DELETE NO ACTION
 );
 
+CREATE TABLE public.categories2 (
+    id bigint PRIMARY KEY,
+    parent_id bigint REFERENCES public.categories2(id) ON DELETE RESTRICT,
+    name text NOT NULL
+);
+
+CREATE TABLE public.order_items2 (
+    id bigint PRIMARY KEY,
+    order_id bigint REFERENCES public.orders(id) ON UPDATE CASCADE NOT NULL,
+    product_id bigint NOT NULL
+);
+
+CREATE TABLE public.match_full_a (
+    id bigint PRIMARY KEY
+);
+
+CREATE TABLE public.match_full_b (
+    id bigint PRIMARY KEY,
+    ref_id bigint REFERENCES public.match_full_a(id) MATCH FULL NOT NULL
+);
+
+CREATE TABLE public.match_partial_a (
+    id bigint PRIMARY KEY
+);
+
+CREATE TABLE public.match_partial_b (
+    id bigint PRIMARY KEY,
+    ref_id bigint REFERENCES public.match_partial_a(id) MATCH PARTIAL
+);
+
 ALTER TABLE public.accounts
     ADD CONSTRAINT accounts_parent_fkey FOREIGN KEY (parent_id) REFERENCES public.accounts(id) ON UPDATE SET NULL;
 
@@ -104,3 +134,6 @@ ALTER TABLE public.employee_hierarchy
 
 ALTER TABLE public.no_action_child
     ADD CONSTRAINT no_action_child_parent_fkey FOREIGN KEY (parent_id) REFERENCES public.no_action_child(id) ON DELETE NO ACTION;
+
+ALTER TABLE public.categories2
+    ADD CONSTRAINT categories2_parent_fkey FOREIGN KEY (parent_id) REFERENCES public.categories2(id) ON DELETE RESTRICT;
