@@ -566,10 +566,25 @@ func buildOutput(
 		}
 	}
 
+	// Build implicit index map for redundant index detection
+	implicitIndexes := buildImplicitIndexMap(tables)
+
+	// Track seen index definitions for duplicate detection
+	seenIndexes := make(map[string]bool)
+
 	// Output other pass-throughs (not types, sequences, or tables)
 	for _, stmt := range passThroughs {
 		stripped := strings.TrimSpace(stmt)
 		upper := strings.ToUpper(stripped)
+
+		// Skip CREATE INDEX statements that are redundant or duplicates
+		if strings.HasPrefix(upper, "CREATE INDEX") || strings.HasPrefix(upper, "CREATE UNIQUE INDEX") {
+			if isRedundantOrDuplicateIndex(stmt, implicitIndexes, seenIndexes) {
+				continue
+			}
+			// Track this index definition
+			seenIndexes[normalizeIndexDef(stmt)] = true
+		}
 
 		// Skip types, sequences, and tables (already handled)
 		// Exception: partition children when ExperimentalFolding is enabled
@@ -666,4 +681,162 @@ func removeLineComments(sql string) string {
 		result.WriteString("\n")
 	}
 	return result.String()
+}
+
+// buildImplicitIndexMap builds a map of table.columns that have implicit indexes
+// from PRIMARY KEY and UNIQUE constraints
+func buildImplicitIndexMap(tables map[string]*model.TableDef) map[string]bool {
+	implicit := make(map[string]bool)
+
+	for _, td := range tables {
+		tableKey := td.Schema + "." + td.Name
+		if td.Schema == "" {
+			tableKey = td.Name
+		}
+
+		// Check table-level PRIMARY KEY
+		if td.TableLevelPK != "" {
+			// Table-level PK with multiple columns
+			cols := strings.Split(td.TableLevelPK, ", ")
+			for _, col := range cols {
+				col = strings.TrimSpace(cols[0])
+				implicit[tableKey+"."+col] = true
+			}
+		}
+
+		// Check table-level UNIQUE constraints
+		for _, uniqueCols := range td.TableLevelUniques {
+			cols := strings.Split(uniqueCols, ", ")
+			for _, col := range cols {
+				col = strings.TrimSpace(col)
+				implicit[tableKey+"."+col] = true
+			}
+		}
+
+		// Check column-level constraints
+		for _, col := range td.Columns {
+			if col.IsPrimaryKey {
+				implicit[tableKey+"."+col.Name] = true
+			}
+			if col.IsUnique {
+				implicit[tableKey+"."+col.Name] = true
+			}
+		}
+	}
+
+	return implicit
+}
+
+// normalizeIndexDef creates a normalized key for an index definition
+// to detect duplicates
+func normalizeIndexDef(stmt string) string {
+	// Extract table name, columns, and options to create a unique key
+	// Format: table(col1,col2)[UNIQUE][WHERE...][INCLUDE...]
+	re := regexp.MustCompile(`(?i)^CREATE\s+(UNIQUE\s+)?INDEX\s+(?:\S+\s+)?ON\s+([a-zA-Z_][a-zA-Z_0-9]*)\.([a-zA-Z_][a-zA-Z_0-9]*)\s*\(([^)]+)\)`)
+	m := re.FindStringSubmatch(stmt)
+	if m == nil {
+		return ""
+	}
+
+	isUnique := m[1] != ""
+	tableSchema := m[2]
+	tableName := m[3]
+	columnsStr := m[4]
+
+	// Normalize: lowercase, trim spaces
+	columnsStr = strings.ToLower(strings.ReplaceAll(columnsStr, " ", ""))
+
+	// Build key: table(col)[UNIQUE][WHERE...][INCLUDE...]
+	key := tableSchema + "." + tableName + "(" + columnsStr + ")"
+	if isUnique {
+		key = "UNIQUE " + key
+	}
+
+	// Add WHERE clause if present
+	whereMatch := regexp.MustCompile(`(?i)\bWHERE\s+(.+)$`).FindStringSubmatch(stmt)
+	if whereMatch != nil {
+		key += "[WHERE " + strings.ToLower(strings.TrimSpace(whereMatch[1])) + "]"
+	}
+
+	// Add INCLUDE columns if present
+	includeMatch := regexp.MustCompile(`(?i)\bINCLUDE\s+\(([^)]+)\)`).FindStringSubmatch(stmt)
+	if includeMatch != nil {
+		includeCols := strings.ToLower(strings.ReplaceAll(includeMatch[1], " ", ""))
+		key += "[INCLUDE(" + includeCols + ")]"
+	}
+
+	return key
+}
+
+// isRedundantOrDuplicateIndex checks if a CREATE INDEX statement is redundant or duplicate
+func isRedundantOrDuplicateIndex(stmt string, implicitIndexes map[string]bool, seenIndexes map[string]bool) bool {
+	// First check if it's a redundant index (implicit from PK/UNIQUE)
+	if isRedundantIndex(stmt, implicitIndexes) {
+		return true
+	}
+
+	// Then check if it's a duplicate
+	normalized := normalizeIndexDef(stmt)
+	if normalized != "" && seenIndexes[normalized] {
+		return true
+	}
+
+	return false
+}
+
+// isRedundantIndex checks if a CREATE INDEX statement is redundant
+// (i.e., the index is already implicitly created by PRIMARY KEY or UNIQUE)
+func isRedundantIndex(stmt string, implicitIndexes map[string]bool) bool {
+	// Parse CREATE INDEX statement
+	// Format: CREATE [UNIQUE] INDEX idx_name ON table(col [, col...]) [WHERE...] [INCLUDE...]
+	re := regexp.MustCompile(`(?i)^CREATE\s+(UNIQUE\s+)?INDEX\s+(?:\S+\s+)?ON\s+([a-zA-Z_][a-zA-Z_0-9]*)\.([a-zA-Z_][a-zA-Z_0-9]*)\s*\(([^)]+)\)`)
+	m := re.FindStringSubmatch(stmt)
+	if m == nil {
+		return false
+	}
+
+	isUnique := m[1] != ""
+	tableSchema := m[2]
+	tableName := m[3]
+	columnsStr := m[4]
+
+	// Build table key
+	tableKey := tableSchema + "." + tableName
+
+	// Check if this is an expression index (contains parentheses in column list)
+	// Expression indexes are NOT redundant
+	if strings.Contains(columnsStr, "(") {
+		return false
+	}
+
+	// Check if this is a partial index (has WHERE clause)
+	// Partial indexes are NOT redundant
+	if regexp.MustCompile(`(?i)\bWHERE\b`).MatchString(stmt) {
+		return false
+	}
+
+	// Check if this is a covering index (has INCLUDE clause)
+	// Covering indexes are NOT redundant
+	if regexp.MustCompile(`(?i)\bINCLUDE\b`).MatchString(stmt) {
+		return false
+	}
+
+	// Get individual columns
+	columns := strings.Split(columnsStr, ", ")
+	for i, col := range columns {
+		columns[i] = strings.TrimSpace(col)
+	}
+
+	// Single-column index on implicit index column is redundant
+	// Only remove non-unique indexes (unique indexes may have different properties)
+	if len(columns) == 1 && !isUnique {
+		col := columns[0]
+		// Remove quotes if present
+		col = strings.Trim(col, `"`)
+		if implicitIndexes[tableKey+"."+col] {
+			return true
+		}
+	}
+
+	return false
 }
