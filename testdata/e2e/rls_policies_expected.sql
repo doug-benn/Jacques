@@ -1,11 +1,11 @@
-CREATE TABLE public.users (
+CREATE TABLE users (
     id bigint PRIMARY KEY,
     email text NOT NULL,
     name text NOT NULL
 );
 
-ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY users_select_policy ON public.users
+CREATE POLICY users_select_policy ON users
     FOR SELECT
     USING (true);

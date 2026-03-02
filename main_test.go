@@ -145,37 +145,15 @@ func TestCLI_CombinedFlags(t *testing.T) {
 	assert.Contains(t, string(output), "CREATE INDEX")
 }
 
-func TestCLI_ExperimentalFoldingFlag_Default(t *testing.T) {
-	input := "CREATE TABLE public.users (id int, email public.email); CREATE DOMAIN public.email AS text;"
-	var output bytes.Buffer
-	err := run("-", "-", false, strings.NewReader(input), &output)
-	require.NoError(t, err)
-	assert.NotContains(t, output.String(), "CREATE DOMAIN")
-	assert.Contains(t, output.String(), "email public.email")
-}
-
-func TestCLI_ExperimentalFoldingFlag_Enabled(t *testing.T) {
-	input := "CREATE TABLE public.users (id int, email public.email); CREATE DOMAIN public.email AS text;"
-	var output bytes.Buffer
-	err := run("-", "-", true, strings.NewReader(input), &output)
-	require.NoError(t, err)
-	assert.Contains(t, output.String(), "CREATE DOMAIN")
-}
-
-func TestCLI_PartitionChildren_Default(t *testing.T) {
-	input := "CREATE TABLE public.orders (id int) PARTITION BY RANGE (id); CREATE TABLE public.orders_2024 PARTITION OF public.orders FOR VALUES FROM (MINVALUE) TO (2025);"
-	var output bytes.Buffer
-	err := run("-", "-", false, strings.NewReader(input), &output)
-	require.NoError(t, err)
-	assert.NotContains(t, output.String(), "PARTITION OF")
-	assert.Contains(t, output.String(), "PARTITION BY RANGE")
-}
-
-func TestCLI_PartitionChildren_ExperimentalFolding(t *testing.T) {
-	input := "CREATE TABLE public.orders (id int) PARTITION BY RANGE (id); CREATE TABLE public.orders_2024 PARTITION OF public.orders FOR VALUES FROM (MINVALUE) TO (2025);"
-	var output bytes.Buffer
-	err := run("-", "-", true, strings.NewReader(input), &output)
-	require.NoError(t, err)
-	assert.Contains(t, output.String(), "PARTITION OF")
-	assert.Contains(t, output.String(), "PARTITION BY RANGE")
-}
+// TODO: Add minimal flag passing tests
+// These tests were removed because they contained inline SQL strings (not unit-test friendly).
+// The fixture tests in testdata/fixtures/ already validate the flag behavior through dual-mode testing.
+// We should add a minimal test that verifies the flag is passed to the processor without testing SQL transformation.
+// Example:
+// func TestCLI_ExperimentalFoldingFlag_Passed(t *testing.T) {
+//     input := "SELECT 1;"
+//     var output bytes.Buffer
+//     err := run("-", "-", true, strings.NewReader(input), &output)
+//     require.NoError(t, err)
+//     assert.NotEmpty(t, output.String())
+// }

@@ -16,21 +16,24 @@ type TableDef struct {
 }
 
 type ColumnDef struct {
-	Name         string
-	RawDef       string
-	Default      string
-	IsPrimaryKey bool
-	IsUnique     bool
-	IsSerial     bool
-	SequenceName string
-	References   string
-	OnDelete     string
-	OnUpdate     string
-	Match        string
+	Name              string
+	RawDef            string
+	Default           string
+	IsPrimaryKey      bool
+	IsUnique          bool
+	IsSerial          bool
+	SequenceName      string
+	References        string
+	OnDelete          string
+	OnUpdate          string
+	Match             string
+	IsDeferrable      bool
+	InitiallyDeferred bool
+	IndexMethod       string
 }
 
 func (t *TableDef) QualifiedName() string {
-	if t.Schema != "" {
+	if t.Schema != "" && t.Schema != "public" {
 		return t.Schema + "." + t.Name
 	}
 	return t.Name

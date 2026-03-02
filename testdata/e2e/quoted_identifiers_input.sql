@@ -2,6 +2,8 @@
 -- Features tested:
 --   - Quoted constraint names: "pk constraint", "fk constraint"
 --   - ALTER folding with quoted constraint names
+--   - Quoted table names: public."userProfiles"
+--   - Quoted column names
 --
 -- Input: pg_dump output with quoted constraint names
 -- Expected: Quoted constraint names preserved, constraints folded
@@ -26,3 +28,22 @@ ALTER TABLE ONLY public.order_items
 
 ALTER TABLE ONLY public.order_items
     ADD CONSTRAINT "order items user fk" FOREIGN KEY (user_id) REFERENCES public.users(id);
+
+-- Quoted table name
+CREATE TABLE public."userProfiles" (
+    id bigint NOT NULL,
+    "First Name" text NOT NULL,
+    "Last Name" text NOT NULL
+);
+
+ALTER TABLE ONLY public."userProfiles"
+    ADD CONSTRAINT "user profiles pk" PRIMARY KEY (id);
+
+-- Quoted schema name
+CREATE TABLE "MySchema".products (
+    id bigint NOT NULL,
+    name text NOT NULL
+);
+
+ALTER TABLE ONLY "MySchema".products
+    ADD CONSTRAINT "products pk" PRIMARY KEY (id);

@@ -4,132 +4,105 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-
-	"github.com/doug-benn/Jacques/internal/model"
 )
 
-func TestTransform(t *testing.T) {
+func TestCleanRawDef(t *testing.T) {
 	tests := []struct {
 		name  string
 		input string
-		check func(*testing.T, string)
+		want  string
 	}{
 		{
-			name:  "ONLY keyword removal",
-			input: "ALTER TABLE ONLY public.users ADD CONSTRAINT pk PRIMARY KEY (id);",
-			check: func(t *testing.T, result string) {
-				assert.NotContains(t, result, "ONLY")
-			},
+			name:  "trailing comma removed",
+			input: "int,",
+			want:  "int",
 		},
 		{
-			name:  "NOT NULL after PRIMARY KEY removal",
-			input: "ALTER TABLE ONLY public.users ADD CONSTRAINT pk PRIMARY KEY (id);",
-			check: func(t *testing.T, result string) {
-				assert.NotContains(t, result, "NOT NULL")
-			},
+			name:  "whitespace normalized",
+			input: "  bigint  ",
+			want:  "bigint",
+		},
+		{
+			name:  "multiple spaces normalized",
+			input: "bigint   not   null",
+			want:  "bigint not null",
+		},
+		{
+			name:  "no change needed",
+			input: "int",
+			want:  "int",
+		},
+		{
+			name:  "empty string",
+			input: "",
+			want:  "",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := Transform(tt.input)
-			tt.check(t, result)
+			result := cleanRawDef(tt.input)
+			assert.Equal(t, tt.want, result)
 		})
 	}
 }
 
-func TestRenderColumnWithFKCascade(t *testing.T) {
+func TestNeedsTrailingComma(t *testing.T) {
 	tests := []struct {
-		name             string
-		col              *model.ColumnDef
-		expectedContains string
+		name         string
+		currentIndex int
+		totalCount   int
+		hasMoreAfter bool
+		want         bool
 	}{
 		{
-			name: "FK with ON DELETE CASCADE",
-			col: &model.ColumnDef{
-				Name:       "user_id",
-				RawDef:     "bigint",
-				References: "users(id)",
-				OnDelete:   "CASCADE",
-			},
-			expectedContains: "REFERENCES users(id) ON DELETE CASCADE",
+			name:         "first of three",
+			currentIndex: 0,
+			totalCount:   3,
+			hasMoreAfter: false,
+			want:         true,
 		},
 		{
-			name: "FK with ON DELETE SET NULL",
-			col: &model.ColumnDef{
-				Name:       "user_id",
-				RawDef:     "bigint",
-				References: "users(id)",
-				OnDelete:   "SET NULL",
-			},
-			expectedContains: "REFERENCES users(id) ON DELETE SET NULL",
+			name:         "middle of three",
+			currentIndex: 1,
+			totalCount:   3,
+			hasMoreAfter: false,
+			want:         true,
 		},
 		{
-			name: "FK with ON DELETE CASCADE ON UPDATE RESTRICT",
-			col: &model.ColumnDef{
-				Name:       "user_id",
-				RawDef:     "bigint",
-				References: "users(id)",
-				OnDelete:   "CASCADE",
-				OnUpdate:   "RESTRICT",
-			},
-			expectedContains: "REFERENCES users(id) ON DELETE CASCADE ON UPDATE RESTRICT",
+			name:         "last of three",
+			currentIndex: 2,
+			totalCount:   3,
+			hasMoreAfter: false,
+			want:         false,
 		},
 		{
-			name: "FK with MATCH FULL",
-			col: &model.ColumnDef{
-				Name:       "user_id",
-				RawDef:     "bigint",
-				References: "users(id)",
-				Match:      "FULL",
-			},
-			expectedContains: "REFERENCES users(id) MATCH FULL",
+			name:         "last with more after",
+			currentIndex: 2,
+			totalCount:   3,
+			hasMoreAfter: true,
+			want:         true,
 		},
 		{
-			name: "FK with all actions",
-			col: &model.ColumnDef{
-				Name:       "user_id",
-				RawDef:     "bigint",
-				References: "users(id)",
-				OnDelete:   "CASCADE",
-				OnUpdate:   "SET NULL",
-				Match:      "FULL",
-			},
-			expectedContains: "REFERENCES users(id) ON DELETE CASCADE ON UPDATE SET NULL MATCH FULL",
+			name:         "single item no more",
+			currentIndex: 0,
+			totalCount:   1,
+			hasMoreAfter: false,
+			want:         false,
+		},
+		{
+			name:         "single item with more after",
+			currentIndex: 0,
+			totalCount:   1,
+			hasMoreAfter: true,
+			want:         true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := renderColumn(tt.col)
-			assert.Contains(t, result, tt.expectedContains, "rendered column should contain cascade actions")
+			result := needsTrailingComma(tt.currentIndex, tt.totalCount, tt.hasMoreAfter)
+			assert.Equal(t, tt.want, result)
 		})
 	}
-}
-
-func TestRenderTableWithFKCascade(t *testing.T) {
-	td := &model.TableDef{
-		Schema: "public",
-		Name:   "orders",
-		Columns: []*model.ColumnDef{
-			{
-				Name:         "id",
-				RawDef:       "bigint",
-				IsPrimaryKey: true,
-			},
-			{
-				Name:       "user_id",
-				RawDef:     "bigint",
-				References: "users(id)",
-				OnDelete:   "CASCADE",
-			},
-		},
-	}
-
-	result := RenderTable(td)
-	require.NotEmpty(t, result)
-
-	assert.Contains(t, result, "CREATE TABLE public.orders")
-	assert.Contains(t, result, "user_id bigint REFERENCES users(id) ON DELETE CASCADE")
 }

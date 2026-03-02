@@ -6,11 +6,12 @@
 --   - Additional child columns: Child-specific columns beyond parent
 --   - FK to parent: References to parent table
 --   - Primary keys on children: Separate PKs on child tables
+--   - Multi-parent inheritance: Inherit from multiple parents
 --
 -- Input: pg_dump output with inherited tables
 -- Expected: Clean inheritance output
 --
--- Note: Table inheritance is folded when --experimental-folding is NOT used
+-- Note: Multi-parent inheritance requires --experimental-folding
 
 -- Parent table
 CREATE TABLE public.users (
@@ -66,3 +67,24 @@ ALTER TABLE ONLY public.user_sessions
 
 ALTER TABLE ONLY public.user_sessions
     ADD CONSTRAINT user_sessions_user_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
+
+-- Multi-parent inheritance (requires ExperimentalFolding)
+CREATE TABLE public.accounts (
+    id bigint NOT NULL,
+    username text NOT NULL
+);
+
+ALTER TABLE ONLY public.accounts ADD CONSTRAINT accounts_pkey PRIMARY KEY (id);
+
+CREATE TABLE public.profiles (
+    id bigint NOT NULL,
+    bio text
+);
+
+ALTER TABLE ONLY public.profiles ADD CONSTRAINT profiles_pkey PRIMARY KEY (id);
+
+CREATE TABLE public.user_profiles (
+    avatar_url text
+) INHERITS (public.accounts, public.profiles);
+
+ALTER TABLE ONLY public.user_profiles ADD CONSTRAINT user_profiles_pkey PRIMARY KEY (id);

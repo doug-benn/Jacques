@@ -1,4 +1,4 @@
-CREATE TABLE public.users (
+CREATE TABLE users (
     id bigint PRIMARY KEY,
     email text NOT NULL,
     name text NOT NULL,
@@ -14,6 +14,6 @@ END;
 $$ LANGUAGE plpgsql;
 
 CREATE TRIGGER update_users_timestamp
-    BEFORE UPDATE ON public.users
+    BEFORE UPDATE ON users
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at();

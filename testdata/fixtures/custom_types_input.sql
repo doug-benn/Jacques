@@ -1,34 +1,40 @@
--- Test fixture for domain types
--- Features tested:
---   - CREATE DOMAIN: Custom type definitions with constraints
---   - Domain constraints: CHECK constraints on domains
---   - Regex validation: Email pattern validation
---   - Value constraints: Positive integers, allowed values
---   - Domain usage: Tables using domain types as column types
---   - Schema-qualified domains: public.email, public.positive_int
---
--- Input: pg_dump output with domain definitions
--- Expected: Clean domain type output
---
--- Note: Domain types are folded when --experimental-folding is NOT used
+-- Test fixture for custom types (gated - requires ExperimentalFolding)
+-- Covers: COMPOSITE types, DOMAIN with CHECK constraints
+-- Note: These require --experimental-folding flag
 
--- Domain for email
+-- COMPOSITE types
+CREATE TYPE contact_info AS (
+    email text,
+    phone text,
+    mobile text,
+    fax text
+);
+
+-- DOMAIN with CHECK constraints
 CREATE DOMAIN public.email AS text
 CHECK (VALUE ~* '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z2-9]+$');
 
--- Domain for positive numbers
 CREATE DOMAIN public.positive_int AS integer
 CHECK (VALUE > 0);
 
--- Domain for phone number
 CREATE DOMAIN public.phone_number AS text
 CHECK (VALUE ~ '^\+?[0-9]{10,15}$');
 
--- Domain for status (like enum)
 CREATE DOMAIN public.order_status AS text
 CHECK (VALUE IN ('pending', 'processing', 'shipped', 'delivered', 'cancelled'));
 
--- Table using domains
+-- Table using composite type
+CREATE TABLE public.customers (
+    id bigint NOT NULL,
+    name text NOT NULL,
+    contact contact_info,
+    created_at timestamp without time zone NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE ONLY public.customers
+    ADD CONSTRAINT customers_pkey PRIMARY KEY (id);
+
+-- Table using domain types
 CREATE TABLE public.users (
     id bigint NOT NULL,
     email public.email NOT NULL,

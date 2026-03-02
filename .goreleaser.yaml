@@ -8,7 +8,7 @@ before:
 
 builds:
   - id: jacques
-    main: ./cmd/jacques
+    main: .
     env:
       - CGO_ENABLED=0
     goos:
