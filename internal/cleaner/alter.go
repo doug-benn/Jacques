@@ -192,14 +192,18 @@ func handleDropNotNull(stmt string, tables map[string]*model.TableDef) AlterResu
 //   - AlterNotMatched: the statement did not match this handler
 func handleAddPK(stmt string, tables map[string]*model.TableDef) AlterResult {
 	if m := addPKRE.FindStringSubmatch(stmt); m != nil {
-		// Don't fold USING clause - can't be folded into CREATE TABLE
-		upperStmt := strings.ToUpper(stmt)
-		if strings.Contains(upperStmt, "USING") {
-			return AlterNotMatched
-		}
-
 		schema, tname, colsStr := m[1], m[2], m[3]
 		td := FindTable(tables, schema, tname)
+		upperStmt := strings.ToUpper(stmt)
+
+		// Parse USING clause
+		var indexMethod string
+		usingRE := regexp.MustCompile(`(?i)\bUSING\s+([a-zA-Z_][a-zA-Z_0-9]*)\b`)
+		usingMatch := usingRE.FindStringSubmatch(stmt)
+		if usingMatch != nil {
+			indexMethod = usingMatch[1]
+		}
+
 		if td != nil {
 			cols := strings.Split(colsStr, ",")
 			if len(cols) == 1 {
@@ -211,6 +215,7 @@ func handleAddPK(stmt string, tables map[string]*model.TableDef) AlterResult {
 						// Parse DEFERRABLE for PRIMARY KEY - only add if explicitly DEFERRABLE (not NOT DEFERRABLE)
 						c.IsDeferrable = strings.Contains(upperStmt, " DEFERRABLE") && !strings.Contains(upperStmt, "NOT DEFERRABLE")
 						c.InitiallyDeferred = strings.Contains(upperStmt, "INITIALLY DEFERRED")
+						c.IndexMethod = indexMethod
 						break
 					}
 				}

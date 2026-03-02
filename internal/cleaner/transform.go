@@ -356,6 +356,10 @@ func renderColumn(col *model.ColumnDef) string {
 	// Only add PRIMARY KEY if not already in rawDef (for non-SERIAL columns)
 	if !col.IsSerial && col.IsPrimaryKey && !strings.Contains(strings.ToUpper(rawDef), "PRIMARY KEY") {
 		sb.WriteString(" PRIMARY KEY")
+		if col.IndexMethod != "" {
+			sb.WriteString(" USING ")
+			sb.WriteString(col.IndexMethod)
+		}
 		if col.IsDeferrable {
 			sb.WriteString(" DEFERRABLE")
 			if col.InitiallyDeferred {

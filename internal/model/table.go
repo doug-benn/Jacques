@@ -29,6 +29,7 @@ type ColumnDef struct {
 	Match             string
 	IsDeferrable      bool
 	InitiallyDeferred bool
+	IndexMethod       string
 }
 
 func (t *TableDef) QualifiedName() string {

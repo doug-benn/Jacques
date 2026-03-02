@@ -156,7 +156,7 @@ ALTER TABLE ONLY public.not_deferrable_unique
 ALTER TABLE ONLY public.not_deferrable_unique
     ADD CONSTRAINT not_deferrable_unique_email_key UNIQUE (email) NOT DEFERRABLE;
 
--- Negative test: USING clause (should NOT fold - pass through)
+-- Test case: USING clause (should fold into CREATE TABLE)
 CREATE TABLE public.using_clause (
     id bigint NOT NULL
 );
