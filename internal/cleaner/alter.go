@@ -192,14 +192,8 @@ func handleDropNotNull(stmt string, tables map[string]*model.TableDef) AlterResu
 //   - AlterNotMatched: the statement did not match this handler
 func handleAddPK(stmt string, tables map[string]*model.TableDef) AlterResult {
 	if m := addPKRE.FindStringSubmatch(stmt); m != nil {
-		// Don't fold DEFERRABLE constraints - they have different semantics
-		// NOT DEFERRABLE can fold (same as default)
-		upperStmt := strings.ToUpper(stmt)
-		if strings.Contains(upperStmt, "DEFERRABLE") && !strings.Contains(upperStmt, "NOT DEFERRABLE") {
-			return AlterNotMatched
-		}
-
 		// Don't fold USING clause - can't be folded into CREATE TABLE
+		upperStmt := strings.ToUpper(stmt)
 		if strings.Contains(upperStmt, "USING") {
 			return AlterNotMatched
 		}
@@ -214,6 +208,9 @@ func handleAddPK(stmt string, tables map[string]*model.TableDef) AlterResult {
 						c.IsPrimaryKey = true
 						c.IsUnique = false
 						c.RawDef = strings.TrimSpace(notNullRE.ReplaceAllString(c.RawDef, ""))
+						// Parse DEFERRABLE for PRIMARY KEY - only add if explicitly DEFERRABLE (not NOT DEFERRABLE)
+						c.IsDeferrable = strings.Contains(upperStmt, " DEFERRABLE") && !strings.Contains(upperStmt, "NOT DEFERRABLE")
+						c.InitiallyDeferred = strings.Contains(upperStmt, "INITIALLY DEFERRED")
 						break
 					}
 				}
@@ -232,14 +229,8 @@ func handleAddPK(stmt string, tables map[string]*model.TableDef) AlterResult {
 //   - AlterNotMatched: the statement did not match this handler
 func handleAddUnique(stmt string, tables map[string]*model.TableDef) AlterResult {
 	if m := addUniqueRE.FindStringSubmatch(stmt); m != nil {
-		// Don't fold DEFERRABLE constraints - they have different semantics
-		// NOT DEFERRABLE can fold (same as default)
-		upperStmt := strings.ToUpper(stmt)
-		if strings.Contains(upperStmt, "DEFERRABLE") && !strings.Contains(upperStmt, "NOT DEFERRABLE") {
-			return AlterNotMatched
-		}
-
 		// Don't fold USING clause - can't be folded into CREATE TABLE
+		upperStmt := strings.ToUpper(stmt)
 		if strings.Contains(upperStmt, "USING") {
 			return AlterNotMatched
 		}
@@ -252,6 +243,9 @@ func handleAddUnique(stmt string, tables map[string]*model.TableDef) AlterResult
 				for _, c := range td.Columns {
 					if strings.EqualFold(c.Name, strings.TrimSpace(cols[0])) && !c.IsPrimaryKey {
 						c.IsUnique = true
+						// Parse DEFERRABLE - only add if explicitly DEFERRABLE (not NOT DEFERRABLE)
+						c.IsDeferrable = strings.Contains(upperStmt, " DEFERRABLE") && !strings.Contains(upperStmt, "NOT DEFERRABLE")
+						c.InitiallyDeferred = strings.Contains(upperStmt, "INITIALLY DEFERRED")
 						break
 					}
 				}

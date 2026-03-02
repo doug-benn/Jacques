@@ -56,27 +56,18 @@ CREATE TABLE public.multi_constraint (
 );
 
 CREATE TABLE public.deferrable_unique (
-    id bigint NOT NULL,
-    email text NOT NULL
+    id bigint PRIMARY KEY DEFERRABLE,
+    email text NOT NULL UNIQUE DEFERRABLE INITIALLY DEFERRED
 );
 
 CREATE TABLE public.not_deferrable_unique (
-    id bigint NOT NULL,
+    id bigint PRIMARY KEY,
     email text NOT NULL UNIQUE
 );
 
 CREATE TABLE public.using_clause (
     id bigint NOT NULL
 );
-
-ALTER TABLE public.deferrable_unique
-    ADD CONSTRAINT deferrable_unique_pkey PRIMARY KEY (id);
-
-ALTER TABLE public.deferrable_unique
-    ADD CONSTRAINT deferrable_unique_email_key UNIQUE (email) DEFERRABLE INITIALLY DEFERRED;
-
-ALTER TABLE public.not_deferrable_unique
-    ADD CONSTRAINT not_deferrable_unique_pkey PRIMARY KEY (id);
 
 ALTER TABLE public.using_clause
     ADD CONSTRAINT using_clause_pkey PRIMARY KEY (id) USING btree;
