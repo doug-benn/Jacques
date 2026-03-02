@@ -1,5 +1,5 @@
 -- Test fixture for Views
--- Covers: Simple views, views with joins, views with subqueries
+-- Covers: Regular views, materialized views, views with joins, views with subqueries
 
 -- Base tables for views
 CREATE TABLE public.users (
@@ -13,7 +13,8 @@ CREATE TABLE public.orders (
     id bigint NOT NULL,
     user_id bigint NOT NULL,
     total numeric(10,2) NOT NULL,
-    status text NOT NULL DEFAULT 'pending'
+    status text NOT NULL DEFAULT 'pending',
+    created_at timestamp without time zone NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE public.products (
@@ -25,6 +26,10 @@ CREATE TABLE public.products (
 ALTER TABLE ONLY public.users ADD CONSTRAINT users_pkey PRIMARY KEY (id);
 ALTER TABLE ONLY public.orders ADD CONSTRAINT orders_pkey PRIMARY KEY (id);
 ALTER TABLE ONLY public.products ADD CONSTRAINT products_pkey PRIMARY KEY (id);
+
+-- ============================================
+-- Regular Views
+-- ============================================
 
 -- Simple view
 CREATE VIEW active_users AS
@@ -60,3 +65,31 @@ SELECT
 FROM public.orders o
 JOIN public.users u ON o.user_id = u.id
 JOIN public.products p ON p.id = 1;
+
+-- Regular view in materialized_views style
+CREATE VIEW order_summary AS
+SELECT o.id, o.total, o.status, o.created_at, u.name as user_name
+FROM orders o
+JOIN users u ON o.user_id = u.id;
+
+-- ============================================
+-- Materialized Views
+-- ============================================
+
+-- Materialized view with aggregation
+CREATE MATERIALIZED VIEW order_stats AS
+SELECT status, COUNT(*) as count, SUM(total) as total_amount
+FROM orders
+GROUP BY status;
+
+-- Index on materialized view
+CREATE INDEX idx_order_stats_status ON order_stats(status);
+
+-- Another materialized view with JOIN
+CREATE MATERIALIZED VIEW user_order_summary AS
+SELECT u.id as user_id, u.name, COUNT(o.id) as order_count, COALESCE(SUM(o.total), 0) as total_spent
+FROM users u
+LEFT JOIN orders o ON u.id = o.user_id
+GROUP BY u.id, u.name;
+
+CREATE INDEX idx_user_order_user_id ON user_order_summary(user_id);
