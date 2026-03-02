@@ -243,6 +243,9 @@ func cleanRawDef(raw string) string {
 
 	raw = whitespaceRE.ReplaceAllString(raw, " ")
 
+	// Remove public. prefix from type references since public is the default schema
+	raw = strings.ReplaceAll(raw, "public.", "")
+
 	return raw
 }
 
@@ -322,7 +325,9 @@ func RenderTable(td *model.TableDef) string {
 
 	if td.Inherits != "" {
 		sb.WriteString(" ")
-		sb.WriteString(td.Inherits)
+		// Remove public. prefix from inherits since public is the default schema
+		inherits := strings.ReplaceAll(td.Inherits, "public.", "")
+		sb.WriteString(inherits)
 	}
 
 	if td.PartitionBy != "" {
@@ -498,7 +503,9 @@ func renderSerialColumn(col *model.ColumnDef) string {
 func renderReferences(col *model.ColumnDef) string {
 	var sb strings.Builder
 	sb.WriteString(" REFERENCES ")
-	sb.WriteString(col.References)
+	// Strip public. prefix from references since public is the default schema
+	ref := strings.ReplaceAll(col.References, "public.", "")
+	sb.WriteString(ref)
 	// Add ON DELETE if specified
 	if col.OnDelete != "" {
 		sb.WriteString(" ON DELETE ")

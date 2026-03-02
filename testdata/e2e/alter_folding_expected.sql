@@ -1,23 +1,23 @@
-CREATE TABLE public.users (
+CREATE TABLE users (
     id bigint PRIMARY KEY,
     email text,
     name text NOT NULL
 );
 
-CREATE TABLE public.products (
+CREATE TABLE products (
     id bigint PRIMARY KEY,
     sku text NOT NULL UNIQUE,
     name text NOT NULL
 );
 
-CREATE TABLE public.orders (
+CREATE TABLE orders (
     id bigint PRIMARY KEY,
     user_id bigint NOT NULL,
     order_number text NOT NULL,
     UNIQUE (user_id, order_number)
 );
 
-CREATE TABLE public.accounts (
+CREATE TABLE accounts (
     id bigint PRIMARY KEY,
     balance numeric(10,2) NOT NULL,
     status text NOT NULL DEFAULT 'active',
@@ -25,7 +25,7 @@ CREATE TABLE public.accounts (
     CONSTRAINT accounts_status_check CHECK (status IN ('active', 'inactive', 'suspended'))
 );
 
-CREATE TABLE public.inventories (
+CREATE TABLE inventories (
     id bigint PRIMARY KEY,
     product_id bigint NOT NULL,
     quantity integer NOT NULL,
@@ -35,13 +35,13 @@ CREATE TABLE public.inventories (
     CONSTRAINT inventories_reorder_quantity_check CHECK (reorder_point <= quantity)
 );
 
-CREATE TABLE public.inline_notnull (
+CREATE TABLE inline_notnull (
     id bigint PRIMARY KEY,
     name text NOT NULL,
     email text NOT NULL UNIQUE
 );
 
-CREATE TABLE public.complex_check (
+CREATE TABLE complex_check (
     id bigint PRIMARY KEY,
     price numeric(10,2) NOT NULL,
     discount numeric(10,2) NOT NULL,
@@ -50,21 +50,21 @@ CREATE TABLE public.complex_check (
     CONSTRAINT complex_check_final_check CHECK (final_price = price - discount)
 );
 
-CREATE TABLE public.multi_constraint (
+CREATE TABLE multi_constraint (
     id bigint PRIMARY KEY,
     code text NOT NULL UNIQUE
 );
 
-CREATE TABLE public.deferrable_unique (
+CREATE TABLE deferrable_unique (
     id bigint PRIMARY KEY DEFERRABLE,
     email text NOT NULL UNIQUE DEFERRABLE INITIALLY DEFERRED
 );
 
-CREATE TABLE public.not_deferrable_unique (
+CREATE TABLE not_deferrable_unique (
     id bigint PRIMARY KEY,
     email text NOT NULL UNIQUE
 );
 
-CREATE TABLE public.using_clause (
+CREATE TABLE using_clause (
     id bigint PRIMARY KEY USING btree
 );

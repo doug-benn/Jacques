@@ -547,9 +547,17 @@ func buildOutput(
 	}
 
 	// Output types first (they must be created before tables that use them)
+	// Remove public. prefix from types for consistency
+	for i, t := range allTypes {
+		allTypes[i] = strings.ReplaceAll(t, "public.", "")
+	}
 	output = append(output, allTypes...)
 
 	// Output sequences before tables (they must exist before tables use DEFAULT nextval)
+	// Remove public. prefix from sequences for consistency
+	for i, seq := range sequences {
+		sequences[i] = strings.ReplaceAll(seq, "public.", "")
+	}
 	output = append(output, sequences...)
 
 	// Output tables
@@ -585,6 +593,9 @@ func buildOutput(
 			}
 			// Track this index definition
 			seenIndexes[normalizeIndexDef(stmt)] = true
+			// Remove public. prefix from CREATE INDEX statements
+			stmt = strings.ReplaceAll(stmt, " ON public.", " ON ")
+			stmt = strings.ReplaceAll(stmt, " ON public.", " ON ")
 		}
 
 		// Skip types, sequences, and tables (already handled)
@@ -592,10 +603,12 @@ func buildOutput(
 		// Exception: tables using gated types (DOMAIN, COMPOSITE) when not ExperimentalFolding
 		if strings.HasPrefix(upper, "CREATE TABLE") {
 			if opts != nil && opts.ExperimentalFolding && partitionOfRE.MatchString(stripped) {
+				stmt = strings.ReplaceAll(stmt, "public.", "")
 				output = append(output, stmt)
 			}
 			// In default mode, tables using gated types need to be output
 			if opts == nil || !opts.ExperimentalFolding {
+				stmt = strings.ReplaceAll(stmt, "public.", "")
 				output = append(output, stmt)
 			}
 			continue
@@ -614,7 +627,16 @@ func buildOutput(
 			}
 		}
 
+		// Remove public. prefix from pass-through statements for consistency
+		// This handles DROP, ALTER, and other statements that reference public schema
+		stmt = strings.ReplaceAll(stmt, "public.", "")
+
 		output = append(output, stmt)
+	}
+
+	// Remove public. prefix from fkPassthroughs for consistency
+	for i, stmt := range fkPassthroughs {
+		fkPassthroughs[i] = strings.ReplaceAll(stmt, "public.", "")
 	}
 
 	output = append(output, fkPassthroughs...)

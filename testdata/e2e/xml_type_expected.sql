@@ -1,4 +1,4 @@
-CREATE TABLE public.documents (
+CREATE TABLE documents (
     id bigint PRIMARY KEY,
     title text NOT NULL,
     content xml,
@@ -6,7 +6,7 @@ CREATE TABLE public.documents (
     created_at timestamp without time zone NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE public.products (
+CREATE TABLE products (
     id bigint PRIMARY KEY,
     name text NOT NULL,
     specifications xml,

@@ -1,16 +1,16 @@
-CREATE TABLE public.products (
+CREATE TABLE products (
     id bigint PRIMARY KEY,
     name text NOT NULL,
     price numeric(10,2) NOT NULL
 );
 
-CREATE TABLE public.users (
+CREATE TABLE users (
     id bigint PRIMARY KEY,
     name text NOT NULL,
     email text NOT NULL
 );
 
-CREATE TABLE public.reservations (
+CREATE TABLE reservations (
     id bigint PRIMARY KEY,
     room_id bigint NOT NULL,
     booking_date date NOT NULL,

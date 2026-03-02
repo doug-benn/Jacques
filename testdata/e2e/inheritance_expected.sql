@@ -1,9 +1,9 @@
-CREATE TABLE public.users (
+CREATE TABLE users (
     id bigint PRIMARY KEY,
     name text NOT NULL,
     created_at timestamp without time zone NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE public.administrators (
+CREATE TABLE administrators (
     role text NOT NULL DEFAULT 'admin'
-) INHERITS (public.users);
+) INHERITS (users);

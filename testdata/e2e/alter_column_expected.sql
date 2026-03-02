@@ -1,4 +1,4 @@
-CREATE TABLE public.users (
+CREATE TABLE users (
     id bigint PRIMARY KEY,
     username text NOT NULL,
     email text,
@@ -6,7 +6,7 @@ CREATE TABLE public.users (
     created_at timestamp without time zone NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE public.products (
+CREATE TABLE products (
     id bigint PRIMARY KEY,
     name text NOT NULL,
     price integer,
@@ -14,7 +14,7 @@ CREATE TABLE public.products (
     is_active boolean NOT NULL DEFAULT true
 );
 
-CREATE TABLE public.logs (
+CREATE TABLE logs (
     id bigint PRIMARY KEY,
     message text NOT NULL,
     severity text

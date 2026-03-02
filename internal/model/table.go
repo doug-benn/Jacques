@@ -33,7 +33,7 @@ type ColumnDef struct {
 }
 
 func (t *TableDef) QualifiedName() string {
-	if t.Schema != "" {
+	if t.Schema != "" && t.Schema != "public" {
 		return t.Schema + "." + t.Name
 	}
 	return t.Name
