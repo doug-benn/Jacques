@@ -42,7 +42,6 @@ var identifierRE = `(?:"[^"]+"|[a-zA-Z_][a-zA-Z_0-9]*)`
 var createSeqRE = regexp.MustCompile(`(?i)^CREATE\s+SEQUENCE\s+`)
 var alterSeqOwnedByRE = regexp.MustCompile(`(?i)^ALTER\s+SEQUENCE\b.*\bOWNED\s+BY\b`)
 var createTypeDomainSchemaRE = regexp.MustCompile(`(?m)^CREATE (TYPE|DOMAIN|SCHEMA)`)
-var createDomainRE = regexp.MustCompile(`(?m)^CREATE\s+DOMAIN`)
 var createDomainWithCheckRE = regexp.MustCompile(`(?i)^CREATE\s+DOMAIN[\s\S]*?CHECK`)
 var createCompositeTypeRE = regexp.MustCompile(`(?m)^CREATE\s+TYPE\s+.*\s+AS\s+\(`)
 var partitionOfRE = regexp.MustCompile(`(?i)^CREATE\s+TABLE\s+.*\s+PARTITION\s+OF\s+`)
@@ -722,7 +721,7 @@ func buildImplicitIndexMap(tables map[string]*model.TableDef) map[string]bool {
 			// Table-level PK with multiple columns
 			cols := strings.Split(td.TableLevelPK, ", ")
 			for _, col := range cols {
-				col = strings.TrimSpace(cols[0])
+				col = strings.TrimSpace(col)
 				implicit[tableKey+"."+col] = true
 			}
 		}

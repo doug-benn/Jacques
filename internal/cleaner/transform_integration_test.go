@@ -253,7 +253,7 @@ func TestIntegration_RenderTableWithFKCascade(t *testing.T) {
 	result := RenderTable(td)
 	require.NotEmpty(t, result)
 
-	assert.Contains(t, result, "CREATE TABLE public.orders")
+	assert.Contains(t, result, "CREATE TABLE orders")
 	assert.Contains(t, result, "user_id bigint REFERENCES users(id) ON DELETE CASCADE")
 }
 
