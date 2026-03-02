@@ -35,22 +35,22 @@ var alterDiscardPatterns = []*regexp.Regexp{
 
 var notNullRE = regexp.MustCompile(`(?i)\bNOT\s+NULL\b`)
 var alterSeqOwnedBy = regexp.MustCompile(`(?i)^ALTER\s+SEQUENCE\b.*\bOWNED\s+BY\b`)
-var setDefaultRE = regexp.MustCompile(`^ALTER\s+TABLE\s+(?:ONLY\s+)?(?:([a-zA-Z_][a-zA-Z_0-9]*)\.)?([a-zA-Z_][a-zA-Z_0-9]*)\s+ALTER\s+COLUMN\s+([a-zA-Z_][a-zA-Z_0-9]*)\s+SET\s+DEFAULT\s+(.*)`)
-var setNotNullRE = regexp.MustCompile(`^ALTER\s+TABLE\s+(?:ONLY\s+)?(?:([a-zA-Z_][a-zA-Z_0-9]*)\.)?([a-zA-Z_][a-zA-Z_0-9]*)\s+ALTER\s+COLUMN\s+([a-zA-Z_][a-zA-Z_0-9]*)\s+SET\s+NOT\s+NULL\b`)
-var setTypeRE = regexp.MustCompile(`^ALTER\s+TABLE\s+(?:ONLY\s+)?(?:([a-zA-Z_][a-zA-Z_0-9]*)\.)?([a-zA-Z_][a-zA-Z_0-9]*)\s+ALTER\s+COLUMN\s+([a-zA-Z_][a-zA-Z_0-9]*)\s+(?:SET\s+DATA\s+)?TYPE\s+(.*)`)
-var addPKRE = regexp.MustCompile(`^ALTER\s+TABLE\s+(?:ONLY\s+)?(?:([a-zA-Z_][a-zA-Z_0-9]*)\.)?([a-zA-Z_][a-zA-Z_0-9]*)\s+ADD\s+CONSTRAINT\s+(?:"[^"]+"|\S+)\s+PRIMARY\s+KEY\s*\(([^)]+)\)`)
-var addUniqueRE = regexp.MustCompile(`^ALTER\s+TABLE\s+(?:ONLY\s+)?(?:([a-zA-Z_][a-zA-Z_0-9]*)\.)?([a-zA-Z_][a-zA-Z_0-9]*)\s+ADD\s+CONSTRAINT\s+(?:"[^"]+"|\S+)\s+UNIQUE\s*\(([^)]+)\)`)
-var addCheckRE = regexp.MustCompile(`^ALTER\s+TABLE\s+(?:ONLY\s+)?(?:([a-zA-Z_][a-zA-Z_0-9]*)\.)?([a-zA-Z_][a-zA-Z_0-9]*)\s+(ADD\s+CONSTRAINT\s+(?:"[^"]+"|\S+)\s+CHECK\s*\(.*)`)
-var addFKRE = regexp.MustCompile(`^ALTER\s+TABLE\s+(?:ONLY\s+)?(?:([a-zA-Z_][a-zA-Z_0-9]*)\.)?([a-zA-Z_][a-zA-Z_0-9]*)\s+(ADD\s+CONSTRAINT\s+(?:"[^"]+"|\S+)\s+FOREIGN\s+KEY\s*\(.*)`)
+var setDefaultRE = regexp.MustCompile(`^ALTER\s+TABLE\s+(?:ONLY\s+)?(?:(` + identifierRE + `)\.)?(` + identifierRE + `)\s+ALTER\s+COLUMN\s+(` + identifierRE + `)\s+SET\s+DEFAULT\s+(.*)`)
+var setNotNullRE = regexp.MustCompile(`^ALTER\s+TABLE\s+(?:ONLY\s+)?(?:(` + identifierRE + `)\.)?(` + identifierRE + `)\s+ALTER\s+COLUMN\s+(` + identifierRE + `)\s+SET\s+NOT\s+NULL\b`)
+var setTypeRE = regexp.MustCompile(`^ALTER\s+TABLE\s+(?:ONLY\s+)?(?:(` + identifierRE + `)\.)?(` + identifierRE + `)\s+ALTER\s+COLUMN\s+(` + identifierRE + `)\s+(?:SET\s+DATA\s+)?TYPE\s+(.*)`)
+var addPKRE = regexp.MustCompile(`^ALTER\s+TABLE\s+(?:ONLY\s+)?(?:(` + identifierRE + `)\.)?(` + identifierRE + `)\s+ADD\s+CONSTRAINT\s+(?:"[^"]+"|\S+)\s+PRIMARY\s+KEY\s*\(([^)]+)\)`)
+var addUniqueRE = regexp.MustCompile(`^ALTER\s+TABLE\s+(?:ONLY\s+)?(?:(` + identifierRE + `)\.)?(` + identifierRE + `)\s+ADD\s+CONSTRAINT\s+(?:"[^"]+"|\S+)\s+UNIQUE\s*\(([^)]+)\)`)
+var addCheckRE = regexp.MustCompile(`^ALTER\s+TABLE\s+(?:ONLY\s+)?(?:(` + identifierRE + `)\.)?(` + identifierRE + `)\s+(ADD\s+CONSTRAINT\s+(?:"[^"]+"|\S+)\s+CHECK\s*\(.*)`)
+var addFKRE = regexp.MustCompile(`^ALTER\s+TABLE\s+(?:ONLY\s+)?(?:(` + identifierRE + `)\.)?(` + identifierRE + `)\s+(ADD\s+CONSTRAINT\s+(?:"[^"]+"|\S+)\s+FOREIGN\s+KEY\s*\(.*)`)
 
 // FK details regex - captures column, reference, and actions
-var fkDetailsRE = regexp.MustCompile(`FOREIGN\s+KEY\s*\(([^)]+)\)\s*REFERENCES\s+([a-zA-Z_][a-zA-Z_0-9]*)(?:\.([a-zA-Z_][a-zA-Z_0-9]*))?\s*\(([^)]+)\)(\s+ON\s+DELETE\s+(NO\s+ACTION|RESTRICT|CASCADE|SET\s+NULL|SET\s+DEFAULT))?(\s+ON\s+UPDATE\s+(NO\s+ACTION|RESTRICT|CASCADE|SET\s+NULL|SET\s+DEFAULT))?(\s+MATCH\s+(FULL|PARTIAL))?`)
-var addColumnRE = regexp.MustCompile(`^ALTER\s+TABLE\s+(?:ONLY\s+)?(?:([a-zA-Z_][a-zA-Z_0-9]*)\.)?([a-zA-Z_][a-zA-Z_0-9]*)\s+ADD\s+(?:COLUMN\s+)?(?:IF\s+NOT\s+EXISTS\s+)?([a-zA-Z_][a-zA-Z_0-9]*)\s+(.*)`)
-var dropDefaultRE = regexp.MustCompile(`^ALTER\s+TABLE\s+(?:ONLY\s+)?(?:([a-zA-Z_][a-zA-Z_0-9]*)\.)?([a-zA-Z_][a-zA-Z_0-9]*)\s+ALTER\s+COLUMN\s+([a-zA-Z_][a-zA-Z_0-9]*)\s+DROP\s+DEFAULT\b`)
-var dropNotNullRE = regexp.MustCompile(`^ALTER\s+TABLE\s+(?:ONLY\s+)?(?:([a-zA-Z_][a-zA-Z_0-9]*)\.)?([a-zA-Z_][a-zA-Z_0-9]*)\s+ALTER\s+COLUMN\s+([a-zA-Z_][a-zA-Z_0-9]*)\s+DROP\s+NOT\s+NULL\b`)
+var fkDetailsRE = regexp.MustCompile(`FOREIGN\s+KEY\s*\(([^)]+)\)\s*REFERENCES\s+(` + identifierRE + `)(?:\.(` + identifierRE + `))?\s*\(([^)]+)\)(\s+ON\s+DELETE\s+(NO\s+ACTION|RESTRICT|CASCADE|SET\s+NULL|SET\s+DEFAULT))?(\s+ON\s+UPDATE\s+(NO\s+ACTION|RESTRICT|CASCADE|SET\s+NULL|SET\s+DEFAULT))?(\s+MATCH\s+(FULL|PARTIAL))?`)
+var addColumnRE = regexp.MustCompile(`^ALTER\s+TABLE\s+(?:ONLY\s+)?(?:(` + identifierRE + `)\.)?(` + identifierRE + `)\s+ADD\s+(?:COLUMN\s+)?(?:IF\s+NOT\s+EXISTS\s+)?(` + identifierRE + `)\s+(.*)`)
+var dropDefaultRE = regexp.MustCompile(`^ALTER\s+TABLE\s+(?:ONLY\s+)?(?:(` + identifierRE + `)\.)?(` + identifierRE + `)\s+ALTER\s+COLUMN\s+(` + identifierRE + `)\s+DROP\s+DEFAULT\b`)
+var dropNotNullRE = regexp.MustCompile(`^ALTER\s+TABLE\s+(?:ONLY\s+)?(?:(` + identifierRE + `)\.)?(` + identifierRE + `)\s+ALTER\s+COLUMN\s+(` + identifierRE + `)\s+DROP\s+NOT\s+NULL\b`)
 var alterNextvalRE = regexp.MustCompile(`nextval\('([^']+)'`)
 var addConstraintRE = regexp.MustCompile(`^ADD\s+`)
-var addExcludeRE = regexp.MustCompile(`^ALTER\s+TABLE\s+(?:ONLY\s+)?(?:([a-zA-Z_][a-zA-Z_0-9]*)\.)?([a-zA-Z_][a-zA-Z_0-9]*)\s+ADD\s+CONSTRAINT\s+(\S+)\s+EXCLUDE\s+(.+)`)
+var addExcludeRE = regexp.MustCompile(`^ALTER\s+TABLE\s+(?:ONLY\s+)?(?:(` + identifierRE + `)\.)?(` + identifierRE + `)\s+ADD\s+CONSTRAINT\s+(\S+)\s+EXCLUDE\s+(.+)`)
 
 func FindTable(tables map[string]*model.TableDef, schema, name string) *model.TableDef {
 	key := ""

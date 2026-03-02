@@ -36,6 +36,9 @@ const (
 	StatementUnknown
 )
 
+// identifierRE matches both quoted and unquoted identifiers
+var identifierRE = `(?:"[^"]+"|[a-zA-Z_][a-zA-Z_0-9]*)`
+
 var createSeqRE = regexp.MustCompile(`(?i)^CREATE\s+SEQUENCE\s+`)
 var alterSeqOwnedByRE = regexp.MustCompile(`(?i)^ALTER\s+SEQUENCE\b.*\bOWNED\s+BY\b`)
 var createTypeDomainSchemaRE = regexp.MustCompile(`(?m)^CREATE (TYPE|DOMAIN|SCHEMA)`)
@@ -45,6 +48,7 @@ var createCompositeTypeRE = regexp.MustCompile(`(?m)^CREATE\s+TYPE\s+.*\s+AS\s+\
 var partitionOfRE = regexp.MustCompile(`(?i)^CREATE\s+TABLE\s+.*\s+PARTITION\s+OF\s+`)
 var blockCommentRE = regexp.MustCompile(`(?s)/\*.*?\*/`)
 var dropRE = regexp.MustCompile(`(?i)^DROP\s+(TABLE|INDEX|SEQUENCE|VIEW|MATERIALIZED\s+VIEW)\s+(IF\s+EXISTS\s+)?(\S+)`)
+var schemaRE = regexp.MustCompile(`(?i)^CREATE\s+SCHEMA\s+(?:IF\s+NOT\s+EXISTS\s+)?(` + identifierRE + `)`)
 
 // detectStatementType determines the type of SQL statement.
 // It returns the StatementType based on the statement content and options.
@@ -307,9 +311,6 @@ func categorizeStatements(statements []string, opts *Options) (
 
 	return tables, sequences, typeStmts, passThroughs, fkPassthroughs, tableOrder
 }
-
-// schemaRE is used to extract schema names from CREATE SCHEMA statements
-var schemaRE = regexp.MustCompile(`(?i)^CREATE\s+SCHEMA\s+(?:IF\s+NOT\s+EXISTS\s+)?([a-zA-Z_][a-zA-Z_0-9]*)`)
 
 // inferMissingSchemas analyzes tables and existing type statements to find schemas that are used but not explicitly created.
 // It returns a slice of CREATE SCHEMA statements for any missing schemas.
@@ -622,7 +623,7 @@ func buildOutput(
 }
 
 func extractSequenceName(stmt string) string {
-	re := regexp.MustCompile(`(?i)^CREATE\s+SEQUENCE\s+(?:IF\s+NOT\s+EXISTS\s+)?([a-zA-Z_][a-zA-Z_0-9]*(?:\.[a-zA-Z_][a-zA-Z_0-9]*)?)`)
+	re := regexp.MustCompile(`(?i)^CREATE\s+SEQUENCE\s+(?:IF\s+NOT\s+EXISTS\s+)?(` + identifierRE + `(?:\.` + identifierRE + `)?)`)
 	m := re.FindStringSubmatch(stmt)
 	if m != nil {
 		return m[1]
@@ -631,7 +632,7 @@ func extractSequenceName(stmt string) string {
 }
 
 func extractAlterSequenceName(stmt string) string {
-	re := regexp.MustCompile(`(?i)^ALTER\s+SEQUENCE\s+(?:IF\s+EXISTS\s+)?(?:([a-zA-Z_][a-zA-Z_0-9]*)\.)?([a-zA-Z_][a-zA-Z_0-9]*)`)
+	re := regexp.MustCompile(`(?i)^ALTER\s+SEQUENCE\s+(?:IF\s+EXISTS\s+)?(?:(` + identifierRE + `)\.)?(` + identifierRE + `)`)
 	m := re.FindStringSubmatch(stmt)
 	if m != nil {
 		// m[1] is schema (optional), m[2] is sequence name
@@ -732,7 +733,7 @@ func buildImplicitIndexMap(tables map[string]*model.TableDef) map[string]bool {
 func normalizeIndexDef(stmt string) string {
 	// Extract table name, columns, and options to create a unique key
 	// Format: table(col1,col2)[UNIQUE][WHERE...][INCLUDE...]
-	re := regexp.MustCompile(`(?i)^CREATE\s+(UNIQUE\s+)?INDEX\s+(?:\S+\s+)?ON\s+([a-zA-Z_][a-zA-Z_0-9]*)\.([a-zA-Z_][a-zA-Z_0-9]*)\s*\(([^)]+)\)`)
+	re := regexp.MustCompile(`(?i)^CREATE\s+(UNIQUE\s+)?INDEX\s+(?:\S+\s+)?ON\s+(` + identifierRE + `)\.(` + identifierRE + `)\s*\(([^)]+)\)`)
 	m := re.FindStringSubmatch(stmt)
 	if m == nil {
 		return ""
@@ -789,7 +790,7 @@ func isRedundantOrDuplicateIndex(stmt string, implicitIndexes map[string]bool, s
 func isRedundantIndex(stmt string, implicitIndexes map[string]bool) bool {
 	// Parse CREATE INDEX statement
 	// Format: CREATE [UNIQUE] INDEX idx_name ON table(col [, col...]) [WHERE...] [INCLUDE...]
-	re := regexp.MustCompile(`(?i)^CREATE\s+(UNIQUE\s+)?INDEX\s+(?:\S+\s+)?ON\s+([a-zA-Z_][a-zA-Z_0-9]*)\.([a-zA-Z_][a-zA-Z_0-9]*)\s*\(([^)]+)\)`)
+	re := regexp.MustCompile(`(?i)^CREATE\s+(UNIQUE\s+)?INDEX\s+(?:\S+\s+)?ON\s+(` + identifierRE + `)\.(` + identifierRE + `)\s*\(([^)]+)\)`)
 	m := re.FindStringSubmatch(stmt)
 	if m == nil {
 		return false

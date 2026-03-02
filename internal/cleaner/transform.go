@@ -7,15 +7,19 @@ import (
 	"github.com/doug-benn/Jacques/internal/model"
 )
 
-var createTableRE = regexp.MustCompile(`(?i)^CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:([a-zA-Z_][a-zA-Z_0-9]*)\.)?([a-zA-Z_][a-zA-Z_0-9]*)\s*\(`)
+// identifierRE matches both quoted and unquoted identifiers
+// Quoted: "userProfiles", unquoted: users
+var identifierRE = `(?:"[^"]+"|[a-zA-Z_][a-zA-Z_0-9]*)`
+
+var createTableRE = regexp.MustCompile(`(?i)^CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:(` + identifierRE + `)\.)?(` + identifierRE + `)\s*\(`)
 var inheritsRE = regexp.MustCompile(`(?i)\s+INHERITS\s*\([^)]+\)`)
 var partitionByRE = regexp.MustCompile(`(?i)\s+PARTITION\s+BY\s+\w+\s*\([^)]+\)`)
-var partitionOfRE = regexp.MustCompile(`(?i)^CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:([a-zA-Z_][a-zA-Z_0-9]*)\.)?([a-zA-Z_][a-zA-Z_0-9]*)\s+PARTITION\s+OF\s+`)
-var colDefRE = regexp.MustCompile(`^\s*([a-zA-Z_][a-zA-Z_0-9]*)\s+(.+)$`)
+var partitionOfRE = regexp.MustCompile(`(?i)^CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:(` + identifierRE + `)\.)?(` + identifierRE + `)\s+PARTITION\s+OF\s+`)
+var colDefRE = regexp.MustCompile(`^\s*(` + identifierRE + `)\s+(.+)$`)
 var nextvalRE = regexp.MustCompile(`nextval\('([^']+)'`)
 var onlyKeywordRE = regexp.MustCompile(`(?i)\bONLY\b\s*`)
 var primaryKeyNotNullRE = regexp.MustCompile(`(?i)\bPRIMARY\s+KEY\s*\([^)]+\)\s*NOT\s+NULL\b`)
-var fkRefRE = regexp.MustCompile(`REFERENCES\s+([a-zA-Z_][a-zA-Z_0-9]*)\s*(?:\(([^)]+)\))?(\s+ON\s+DELETE\s+(NO\s+ACTION|RESTRICT|CASCADE|SET\s+NULL|SET\s+DEFAULT))?(\s+ON\s+UPDATE\s+(NO\s+ACTION|RESTRICT|CASCADE|SET\s+NULL|SET\s+DEFAULT))?(\s+MATCH\s+(FULL|PARTIAL))?`)
+var fkRefRE = regexp.MustCompile(`REFERENCES\s+(` + identifierRE + `)\s*(?:\(([^)]+)\))?(\s+ON\s+DELETE\s+(NO\s+ACTION|RESTRICT|CASCADE|SET\s+NULL|SET\s+DEFAULT))?(\s+ON\s+UPDATE\s+(NO\s+ACTION|RESTRICT|CASCADE|SET\s+NULL|SET\s+DEFAULT))?(\s+MATCH\s+(FULL|PARTIAL))?`)
 var whitespaceRE = regexp.MustCompile(`\s+`)
 var transformNotNullRE = regexp.MustCompile(`(?i)\bNOT\s+NULL\b`)
 
