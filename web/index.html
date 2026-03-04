@@ -37,6 +37,40 @@
         .controls {
             display: flex;
             align-items: center;
+            gap: 12px;
+        }
+
+        .btn {
+            padding: 6px 12px;
+            font-size: 0.85rem;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: background 0.2s;
+        }
+
+        .btn-copy {
+            background: white;
+            color: #ff4d4d;
+        }
+
+        .btn-copy:hover {
+            background: #ffcccc;
+        }
+
+        .btn-clear {
+            background: white;
+            color: #666;
+        }
+
+        .btn-clear:hover {
+            background: #eee;
+        }
+
+        .controls-right {
+            display: flex;
+            align-items: center;
             gap: 16px;
         }
 
@@ -62,7 +96,7 @@
         .container {
             flex: 1;
             display: flex;
-            gap: 2px;
+            gap: 12px;
             padding: 12px;
             min-height: 0;
         }
@@ -78,12 +112,15 @@
         }
 
         .panel-header {
-            background: #ffe6e6;
-            color: #cc0000;
-            padding: 8px 12px;
+            background: white;
+            color: #333;
+            padding: 10px 14px;
             font-size: 0.85rem;
-            font-weight: 500;
-            border-bottom: 1px solid #ffcccc;
+            font-weight: 600;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
 
         .panel textarea {
@@ -103,12 +140,13 @@
             outline: none;
         }
 
-        .panel.output textarea {
-            background: #fffafafa;
-        }
-
         .panel textarea::placeholder {
             color: #999;
+        }
+
+        .panel textarea.error {
+            background: #fff5f5;
+            color: #cc0000;
         }
 
         .loading {
@@ -123,35 +161,68 @@
             justify-content: center;
             font-size: 1.2rem;
             color: #ff4d4d;
+            z-index: 1000;
         }
 
         .loading.hidden {
             display: none;
         }
+
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #333;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 4px;
+            font-size: 0.9rem;
+            opacity: 0;
+            transition: opacity 0.3s;
+            z-index: 1001;
+        }
+
+        .toast.show {
+            opacity: 1;
+        }
+
+        .toast.success {
+            background: #28a745;
+        }
+
+        .toast.error {
+            background: #dc3545;
+        }
     </style>
 </head>
 <body>
     <div class="loading" id="loading">Loading Jacques...</div>
+    <div class="toast" id="toast"></div>
 
     <header>
         <h1>Jacques</h1>
         <div class="controls">
-            <span class="status" id="status"></span>
-            <label>
-                <input type="checkbox" id="experimental">
-                Experimental Folding
-            </label>
+            <button class="btn btn-copy" id="copyBtn">Copy</button>
+            <button class="btn btn-clear" id="clearBtn">Clear</button>
+            <div class="controls-right">
+                <span class="status" id="status"></span>
+                <label>
+                    <input type="checkbox" id="experimental">
+                    Experimental Folding
+                </label>
+            </div>
         </div>
     </header>
 
     <div class="container">
-        <div class="panel output">
-            <div class="panel-header">Cleaned Schema</div>
-            <textarea id="output" readonly placeholder="Cleaned output will appear here..."></textarea>
-        </div>
         <div class="panel">
             <div class="panel-header">Input (pg_dump)</div>
             <textarea id="input" placeholder="Paste your pg_dump schema here..."></textarea>
+        </div>
+        <div class="panel">
+            <div class="panel-header">Cleaned Schema</div>
+            <textarea id="output" readonly placeholder="Cleaned output will appear here..."></textarea>
         </div>
     </div>
 
@@ -177,36 +248,73 @@
             document.getElementById('status').textContent = text;
         }
 
+        function showToast(message, type = '') {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.className = 'toast show ' + type;
+            setTimeout(() => {
+                toast.className = 'toast';
+            }, 2000);
+        }
+
         function clean() {
             if (!window.ready || !window.ready()) {
                 updateStatus('Not ready...');
                 return;
             }
 
-            const input = document.getElementById('input').value;
+            const input = document.getElementById('input');
+            const output = document.getElementById('output');
             const experimental = document.getElementById('experimental').checked;
 
-            if (!input.trim()) {
-                document.getElementById('output').value = '';
+            if (!input.value.trim()) {
+                output.value = '';
+                output.classList.remove('error');
                 return;
             }
 
             updateStatus('Cleaning...');
 
             try {
-                const result = window.cleanSchema(input, experimental);
-                document.getElementById('output').value = result;
+                const result = window.cleanSchema(input.value, experimental);
+                output.value = result;
+                output.classList.remove('error');
                 updateStatus('Done');
             } catch (err) {
-                document.getElementById('output').value = 'Error: ' + err.message;
+                output.value = 'Error: ' + err.message;
+                output.classList.add('error');
                 updateStatus('Error');
+                showToast('Error processing schema', 'error');
                 console.error(err);
             }
+        }
+
+        function copyOutput() {
+            const output = document.getElementById('output');
+            if (!output.value) {
+                showToast('Nothing to copy', 'error');
+                return;
+            }
+            navigator.clipboard.writeText(output.value).then(() => {
+                showToast('Copied to clipboard!', 'success');
+            }).catch(err => {
+                showToast('Failed to copy', 'error');
+                console.error(err);
+            });
+        }
+
+        function clearAll() {
+            document.getElementById('input').value = '';
+            document.getElementById('output').value = '';
+            document.getElementById('output').classList.remove('error');
+            updateStatus('');
         }
 
         let debounceTimer;
         const inputEl = document.getElementById('input');
         const experimentalEl = document.getElementById('experimental');
+        const copyBtn = document.getElementById('copyBtn');
+        const clearBtn = document.getElementById('clearBtn');
 
         inputEl.addEventListener('input', () => {
             clearTimeout(debounceTimer);
@@ -214,6 +322,21 @@
         });
 
         experimentalEl.addEventListener('change', clean);
+
+        copyBtn.addEventListener('click', copyOutput);
+        clearBtn.addEventListener('click', clearAll);
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            // Ctrl/Cmd + Enter to process
+            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                clean();
+            }
+            // Ctrl/Cmd + Shift + C to copy
+            if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'C') {
+                copyOutput();
+            }
+        });
 
         init();
     </script>
