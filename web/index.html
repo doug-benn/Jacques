@@ -51,21 +51,21 @@
         }
 
         .btn-copy {
-            background: white;
-            color: #ff4d4d;
+            background: #ff4d4d;
+            color: white;
         }
 
         .btn-copy:hover {
-            background: #ffcccc;
+            background: #cc0000;
         }
 
         .btn-clear {
-            background: white;
+            background: #eee;
             color: #666;
         }
 
         .btn-clear:hover {
-            background: #eee;
+            background: #ddd;
         }
 
         .controls-right {
@@ -121,6 +121,11 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
+        }
+
+        .panel-header .btn {
+            padding: 4px 10px;
+            font-size: 0.75rem;
         }
 
         .panel textarea {
@@ -203,25 +208,27 @@
     <header>
         <h1>Jacques</h1>
         <div class="controls">
-            <button class="btn btn-copy" id="copyBtn">Copy</button>
-            <button class="btn btn-clear" id="clearBtn">Clear</button>
-            <div class="controls-right">
-                <span class="status" id="status"></span>
-                <label>
-                    <input type="checkbox" id="experimental">
-                    Experimental Folding
-                </label>
-            </div>
+            <span class="status" id="status"></span>
+            <label>
+                <input type="checkbox" id="experimental">
+                Experimental Folding
+            </label>
         </div>
     </header>
 
     <div class="container">
         <div class="panel">
-            <div class="panel-header">Input (pg_dump)</div>
+            <div class="panel-header">
+                <span>Input (pg_dump)</span>
+                <button class="btn btn-clear" id="clearBtn">Clear</button>
+            </div>
             <textarea id="input" placeholder="Paste your pg_dump schema here..."></textarea>
         </div>
         <div class="panel">
-            <div class="panel-header">Cleaned Schema</div>
+            <div class="panel-header">
+                <span>Cleaned Schema</span>
+                <button class="btn btn-copy" id="copyBtn">Copy</button>
+            </div>
             <textarea id="output" readonly placeholder="Cleaned output will appear here..."></textarea>
         </div>
     </div>
