@@ -1,351 +1,370 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Jacques - Schema Cleaner</title>
+    <meta name="title" content="Jacques - PostgreSQL Schema Cleaner">
+    <meta name="description" content="Clean pg_dump schema output. Remove noise, consolidate statements, convert sequences to SERIAL types.">
+    <meta name="keywords" content="PostgreSQL, pg_dump, schema cleaner, SQL migration, database schema">
+    <meta name="author" content="Doug Benn">
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
 
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            height: 100vh;
-            display: flex;
-            flex-direction: column;
-            background: #f5f5f5;
-        }
+      body {
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        background: #f5f5f5;
+      }
 
-        header {
-            background: #cc0000;
-            color: white;
-            padding: 12px 20px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
+      header {
+        background: #cb0715;
+        color: white;
+        padding: 12px 20px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      }
 
-        header h1 {
-            font-size: 1.4rem;
-            font-weight: 600;
-        }
+      header h1 {
+        font-size: 1.4rem;
+        font-weight: 600;
+      }
 
-        .controls {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }
+      .controls {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
 
-        .btn {
-            padding: 6px 12px;
-            font-size: 0.85rem;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-weight: 500;
-            transition: background 0.2s;
-        }
+      .btn {
+        padding: 6px 12px;
+        font-size: 0.85rem;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-weight: 500;
+        transition: background 0.2s;
+      }
 
-        .btn-copy {
-            background: #ff4d4d;
-            color: white;
-        }
+      .btn-copy {
+        background: #ff4d4d;
+        color: white;
+      }
 
-        .btn-copy:hover {
-            background: #cc0000;
-        }
+      .btn-copy:hover {
+        background: #cc0000;
+      }
 
-        .btn-clear {
-            background: #eee;
-            color: #666;
-        }
+      .btn-clear {
+        background: #eee;
+        color: #666;
+      }
 
-        .btn-clear:hover {
-            background: #ddd;
-        }
+      .btn-clear:hover {
+        background: #ddd;
+      }
 
-        .controls-right {
-            display: flex;
-            align-items: center;
-            gap: 16px;
-        }
+      .controls-right {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+      }
 
-        .controls label {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            font-size: 0.9rem;
-            cursor: pointer;
-        }
+      .controls label {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 0.9rem;
+        cursor: pointer;
+      }
 
-        .controls input[type="checkbox"] {
-            accent-color: #ff4d4d;
-            width: 16px;
-            height: 16px;
-        }
+      .controls input[type="checkbox"] {
+        accent-color: #ff4d4d;
+        width: 16px;
+        height: 16px;
+      }
 
-        .status {
-            font-size: 0.85rem;
-            color: #ffcccc;
-        }
+      .status {
+        font-size: 0.85rem;
+        color: #ffcccc;
+      }
 
-        .container {
-            flex: 1;
-            display: flex;
-            gap: 12px;
-            padding: 12px;
-            min-height: 0;
-        }
+      .container {
+        flex: 1;
+        display: flex;
+        gap: 12px;
+        padding: 12px;
+        min-height: 0;
+      }
 
-        .panel {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            background: white;
-            border-radius: 6px;
-            overflow: hidden;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        }
+      .panel {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        background: white;
+        border-radius: 6px;
+        overflow: hidden;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+      }
 
-        .panel-header {
-            background: white;
-            color: #333;
-            padding: 10px 14px;
-            font-size: 0.85rem;
-            font-weight: 600;
-            border-bottom: 1px solid #eee;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
+      .panel-header {
+        background: white;
+        color: #333;
+        padding: 10px 14px;
+        font-size: 0.85rem;
+        font-weight: 600;
+        border-bottom: 1px solid #eee;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
 
-        .panel-header .btn {
-            padding: 4px 10px;
-            font-size: 0.75rem;
-        }
+      .panel-header .btn {
+        padding: 4px 10px;
+        font-size: 0.75rem;
+      }
 
-        .panel textarea {
-            flex: 1;
-            width: 100%;
-            border: none;
-            resize: none;
-            padding: 12px;
-            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
-            font-size: 13px;
-            line-height: 1.5;
-            background: white;
-            color: #333;
-        }
+      .panel textarea {
+        flex: 1;
+        width: 100%;
+        border: none;
+        resize: none;
+        padding: 12px;
+        font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace;
+        font-size: 13px;
+        line-height: 1.5;
+        background: white;
+        color: #333;
+      }
 
-        .panel textarea:focus {
-            outline: none;
-        }
+      .panel textarea:focus {
+        outline: none;
+      }
 
-        .panel textarea::placeholder {
-            color: #999;
-        }
+      .panel textarea::placeholder {
+        color: #999;
+      }
 
-        .panel textarea.error {
-            background: #fff5f5;
-            color: #cc0000;
-        }
+      .panel textarea.error {
+        background: #fff5f5;
+        color: #cc0000;
+      }
 
-        .loading {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(255,255,255,0.9);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.2rem;
-            color: #ff4d4d;
-            z-index: 1000;
-        }
+      .loading {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(255, 255, 255, 0.9);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.2rem;
+        color: #ff4d4d;
+        z-index: 1000;
+      }
 
-        .loading.hidden {
-            display: none;
-        }
+      .loading.hidden {
+        display: none;
+      }
 
-        .toast {
-            position: fixed;
-            bottom: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: #333;
-            color: white;
-            padding: 10px 20px;
-            border-radius: 4px;
-            font-size: 0.9rem;
-            opacity: 0;
-            transition: opacity 0.3s;
-            z-index: 1001;
-        }
+      .toast {
+        position: fixed;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: #333;
+        color: white;
+        padding: 10px 20px;
+        border-radius: 4px;
+        font-size: 0.9rem;
+        opacity: 0;
+        transition: opacity 0.3s;
+        z-index: 1001;
+      }
 
-        .toast.show {
-            opacity: 1;
-        }
+      .toast.show {
+        opacity: 1;
+      }
 
-        .toast.success {
-            background: #28a745;
-        }
+      .toast.success {
+        background: #28a745;
+      }
 
-        .toast.error {
-            background: #dc3545;
-        }
+      .toast.error {
+        background: #dc3545;
+      }
     </style>
-</head>
-<body>
+  </head>
+  <body>
     <div class="loading" id="loading">Loading Jacques...</div>
     <div class="toast" id="toast"></div>
 
     <header>
-        <h1>Jacques</h1>
-        <div class="controls">
-            <span class="status" id="status"></span>
-            <label>
-                <input type="checkbox" id="experimental">
-                Experimental Folding
-            </label>
-        </div>
+      <h1>Jacques</h1>
+      <div class="controls">
+        <span class="status" id="status"></span>
+        <label>
+          <input type="checkbox" id="experimental" />
+          Experimental Folding
+        </label>
+      </div>
     </header>
 
     <div class="container">
-        <div class="panel">
-            <div class="panel-header">
-                <span>Input (pg_dump)</span>
-                <button class="btn btn-clear" id="clearBtn">Clear</button>
-            </div>
-            <textarea id="input" placeholder="Paste your pg_dump schema here..."></textarea>
+      <div class="panel">
+        <div class="panel-header">
+          <span>Input (pg_dump)</span>
+          <button class="btn btn-clear" id="clearBtn">Clear</button>
         </div>
-        <div class="panel">
-            <div class="panel-header">
-                <span>Cleaned Schema</span>
-                <button class="btn btn-copy" id="copyBtn">Copy</button>
-            </div>
-            <textarea id="output" readonly placeholder="Cleaned output will appear here..."></textarea>
+        <textarea
+          id="input"
+          placeholder="Paste your pg_dump schema here..."
+        ></textarea>
+      </div>
+      <div class="panel">
+        <div class="panel-header">
+          <span>Cleaned Schema</span>
+          <button class="btn btn-copy" id="copyBtn">Copy</button>
         </div>
+        <textarea
+          id="output"
+          readonly
+          placeholder="Cleaned output will appear here..."
+        ></textarea>
+      </div>
     </div>
 
     <script src="./wasm_exec.js"></script>
     <script>
-        let wasm = null;
+      let wasm = null;
 
-        async function init() {
-            try {
-                const go = new Go();
-                const result = await WebAssembly.instantiateStreaming(fetch('main.wasm'), go.importObject);
-                wasm = result.instance;
-                go.run(wasm);
-                document.getElementById('loading').classList.add('hidden');
-                updateStatus('Ready');
-            } catch (err) {
-                document.getElementById('loading').textContent = 'Error loading WASM: ' + err.message;
-                console.error(err);
-            }
+      async function init() {
+        try {
+          const go = new Go();
+          const result = await WebAssembly.instantiateStreaming(
+            fetch("main.wasm"),
+            go.importObject,
+          );
+          wasm = result.instance;
+          go.run(wasm);
+          document.getElementById("loading").classList.add("hidden");
+          updateStatus("Ready");
+        } catch (err) {
+          document.getElementById("loading").textContent =
+            "Error loading WASM: " + err.message;
+          console.error(err);
+        }
+      }
+
+      function updateStatus(text) {
+        document.getElementById("status").textContent = text;
+      }
+
+      function showToast(message, type = "") {
+        const toast = document.getElementById("toast");
+        toast.textContent = message;
+        toast.className = "toast show " + type;
+        setTimeout(() => {
+          toast.className = "toast";
+        }, 2000);
+      }
+
+      function clean() {
+        if (!window.ready || !window.ready()) {
+          updateStatus("Not ready...");
+          return;
         }
 
-        function updateStatus(text) {
-            document.getElementById('status').textContent = text;
+        const input = document.getElementById("input");
+        const output = document.getElementById("output");
+        const experimental = document.getElementById("experimental").checked;
+
+        if (!input.value.trim()) {
+          output.value = "";
+          output.classList.remove("error");
+          return;
         }
 
-        function showToast(message, type = '') {
-            const toast = document.getElementById('toast');
-            toast.textContent = message;
-            toast.className = 'toast show ' + type;
-            setTimeout(() => {
-                toast.className = 'toast';
-            }, 2000);
+        updateStatus("Cleaning...");
+
+        try {
+          const result = window.cleanSchema(input.value, experimental);
+          output.value = result;
+          output.classList.remove("error");
+          updateStatus("Done");
+        } catch (err) {
+          output.value = "Error: " + err.message;
+          output.classList.add("error");
+          updateStatus("Error");
+          showToast("Error processing schema", "error");
+          console.error(err);
         }
+      }
 
-        function clean() {
-            if (!window.ready || !window.ready()) {
-                updateStatus('Not ready...');
-                return;
-            }
-
-            const input = document.getElementById('input');
-            const output = document.getElementById('output');
-            const experimental = document.getElementById('experimental').checked;
-
-            if (!input.value.trim()) {
-                output.value = '';
-                output.classList.remove('error');
-                return;
-            }
-
-            updateStatus('Cleaning...');
-
-            try {
-                const result = window.cleanSchema(input.value, experimental);
-                output.value = result;
-                output.classList.remove('error');
-                updateStatus('Done');
-            } catch (err) {
-                output.value = 'Error: ' + err.message;
-                output.classList.add('error');
-                updateStatus('Error');
-                showToast('Error processing schema', 'error');
-                console.error(err);
-            }
+      function copyOutput() {
+        const output = document.getElementById("output");
+        if (!output.value) {
+          showToast("Nothing to copy", "error");
+          return;
         }
+        navigator.clipboard
+          .writeText(output.value)
+          .then(() => {
+            showToast("Copied to clipboard!", "success");
+          })
+          .catch((err) => {
+            showToast("Failed to copy", "error");
+            console.error(err);
+          });
+      }
 
-        function copyOutput() {
-            const output = document.getElementById('output');
-            if (!output.value) {
-                showToast('Nothing to copy', 'error');
-                return;
-            }
-            navigator.clipboard.writeText(output.value).then(() => {
-                showToast('Copied to clipboard!', 'success');
-            }).catch(err => {
-                showToast('Failed to copy', 'error');
-                console.error(err);
-            });
+      function clearAll() {
+        document.getElementById("input").value = "";
+        document.getElementById("output").value = "";
+        document.getElementById("output").classList.remove("error");
+        updateStatus("");
+      }
+
+      let debounceTimer;
+      const inputEl = document.getElementById("input");
+      const experimentalEl = document.getElementById("experimental");
+      const copyBtn = document.getElementById("copyBtn");
+      const clearBtn = document.getElementById("clearBtn");
+
+      inputEl.addEventListener("input", () => {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(clean, 150);
+      });
+
+      experimentalEl.addEventListener("change", clean);
+
+      copyBtn.addEventListener("click", copyOutput);
+      clearBtn.addEventListener("click", clearAll);
+
+      // Keyboard shortcuts
+      document.addEventListener("keydown", (e) => {
+        // Ctrl/Cmd + Enter to process
+        if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+          clean();
         }
-
-        function clearAll() {
-            document.getElementById('input').value = '';
-            document.getElementById('output').value = '';
-            document.getElementById('output').classList.remove('error');
-            updateStatus('');
+        // Ctrl/Cmd + Shift + C to copy
+        if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === "C") {
+          copyOutput();
         }
+      });
 
-        let debounceTimer;
-        const inputEl = document.getElementById('input');
-        const experimentalEl = document.getElementById('experimental');
-        const copyBtn = document.getElementById('copyBtn');
-        const clearBtn = document.getElementById('clearBtn');
-
-        inputEl.addEventListener('input', () => {
-            clearTimeout(debounceTimer);
-            debounceTimer = setTimeout(clean, 150);
-        });
-
-        experimentalEl.addEventListener('change', clean);
-
-        copyBtn.addEventListener('click', copyOutput);
-        clearBtn.addEventListener('click', clearAll);
-
-        // Keyboard shortcuts
-        document.addEventListener('keydown', (e) => {
-            // Ctrl/Cmd + Enter to process
-            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-                clean();
-            }
-            // Ctrl/Cmd + Shift + C to copy
-            if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'C') {
-                copyOutput();
-            }
-        });
-
-        init();
+      init();
     </script>
-</body>
+  </body>
 </html>
