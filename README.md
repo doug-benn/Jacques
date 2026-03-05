@@ -1,12 +1,21 @@
-# Jacques - Schema Dump Cleaner
+# Jacques - Schema decontamination
 
 ![Jacques decontaminating](jacques_he_is_clean.gif)
 
 _"Voilà. He is clean."_ - Jacques (Finding Nemo)
 
-Jacques cleans and consolidates database schema dumps.
+Jacques decontaminates database schema dumps. Cleaning, folding and consolidating schemas for use in migrations, sqlc, ORMs, and version control.
 
 Currently supports **PostgreSQL**. More databases coming soon.
+
+## Features
+
+- Removes noise: comments, `GRANT`, `REVOKE`, `OWNER TO`, `SET`, session config
+- Consolidates `CREATE TABLE` + `ALTER TABLE` statements into self-contained definitions
+- Inlines foreign key constraints into column definitions
+- Converts sequences to `SERIAL`/`BIGSERIAL` types
+- Handles database-specific types: enums, domains, generated columns
+- Guaranteed semantic equivalence - cleaned output produces identical schema
 
 ## Why?
 
@@ -17,14 +26,9 @@ Database dump tools like `pg_dump` intentionally split table definitions across 
 - ORM code generation
 - Documentation
 
-## Features
+## Experimental Folding
 
-- Consolidates `CREATE TABLE` + `ALTER TABLE` statements into self-contained definitions
-- Removes noise: `GRANT`, `REVOKE`, `OWNER TO`, `SET`, `COMMENT`, session config
-- Inlines foreign key constraints into column definitions
-- Converts sequences to `SERIAL`/`BIGSERIAL` types
-- Handles database-specific types: enums, domains, generated columns
-- Guaranteed semantic equivalence - cleaned output produces identical schema
+A CLI flag to enable foldering transformations that can't be end-to-end tested. Because the semantic equivalence can't be tested these schema transformations are opt-in at your own risk - Please check the output carefully!
 
 ## Quick Start
 
