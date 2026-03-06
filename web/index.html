@@ -3,17 +3,38 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Jacques - Schema Cleaner</title>
-    <meta name="title" content="Jacques - PostgreSQL Schema Cleaner" />
+    <title>Jacques</title>
+    <meta name="title" content="Jacques" />
     <meta
       name="description"
-      content="Clean pg_dump schema output. Remove noise, consolidate statements, convert sequences to SERIAL types."
+      content="Jacques decontaminates database schema dumps. Cleaning, folding and consolidating schemas for use in migrations, sqlc, ORMs, and version control."
     />
     <meta
       name="keywords"
-      content="PostgreSQL, pg_dump, schema cleaner, SQL migration, database schema"
+      content="PostgreSQL, pg_dump, schema, cleaner, SQL, migration, database, folding, consolidate, decontaminate, decontamination, sqlc, ORM, SERIAL, BIGSERIAL, sequence, foreign key, primary key, constraints, enum, domain, generated columns, CREATE TABLE, ALTER TABLE, version control, database schema, schema cleaner, schema consolidation"
     />
     <meta name="author" content="Doug Benn" />
+    <meta property="og:title" content="Jacques" />
+    <meta property="og:description" content="Jacques decontaminates database schema dumps. Cleaning, folding and consolidating schemas for use in migrations, sqlc, ORMs, and version control." />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://usejacques.com" />
+    <meta property="og:site_name" content="Jacques" />
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebApplication",
+      "name": "Jacques",
+      "description": "Jacques decontaminates database schema dumps. Cleaning, folding and consolidating schemas for use in migrations, sqlc, ORMs, and version control.",
+      "url": "https://usejacques.com",
+      "applicationCategory": "DeveloperApplication",
+      "operatingSystem": "Web Browser",
+      "browserRequirements": "Requires JavaScript. Requires WebAssembly support.",
+      "author": {
+        "@type": "Person",
+        "name": "Doug Benn"
+      }
+    }
+    </script>
     <link
       rel="icon"
       href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>🦐</text></svg>"
@@ -467,7 +488,7 @@
     <div class="toast" id="toast"></div>
 
     <header>
-      <h1>🦐 Jacques</h1>
+      <h1>🦐 <strong>Jacques</strong> - decontaminating schemas</h1>
       <div class="controls">
         <details class="about-dropdown">
           <summary>About</summary>
@@ -547,7 +568,8 @@
       </div>
     </header>
 
-    <div class="container">
+    <main>
+      <div class="container">
       <div class="loading-overlay" id="loading">
         <div class="loading-spinner"></div>
         <div class="loading-text">Loading Jacques...</div>
@@ -581,7 +603,7 @@
           placeholder="Decontaminated output will appear here..."
         ></textarea>
       </div>
-    </div>
+    </main>
 
     <script src="./wasm_exec.js"></script>
     <script>
@@ -644,18 +666,20 @@
 
         updateStatus("Decontaminating...");
 
-        try {
-          const result = window.cleanSchema(input.value, experimental);
-          output.value = result;
-          output.classList.remove("error");
-          updateStatus("Voilà. It is clean.");
-        } catch (err) {
-          output.value = "Error: " + err.message;
-          output.classList.add("error");
-          updateStatus("Error");
-          showToast("Error processing schema", "error");
-          console.error(err);
-        }
+        requestAnimationFrame(() => {
+          try {
+            const result = window.cleanSchema(input.value, experimental);
+            output.value = result;
+            output.classList.remove("error");
+            updateStatus("Voilà. It is clean.");
+          } catch (err) {
+            output.value = "Error: " + err.message;
+            output.classList.add("error");
+            updateStatus("Error");
+            showToast("Error processing schema", "error");
+            console.error(err);
+          }
+        });
       }
 
       function copyOutput() {
@@ -689,11 +713,15 @@
       const clearBtn = document.getElementById("clearBtn");
 
       inputEl.addEventListener("input", () => {
+        updateStatus("Decontaminating...");
         clearTimeout(debounceTimer);
         debounceTimer = setTimeout(clean, 150);
       });
 
-      experimentalEl.addEventListener("change", clean);
+      experimentalEl.addEventListener("change", () => {
+        updateStatus("Decontaminating...");
+        clean();
+      });
 
       copyBtn.addEventListener("click", copyOutput);
       clearBtn.addEventListener("click", clearAll);
