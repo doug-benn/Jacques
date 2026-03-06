@@ -4,11 +4,6 @@ on:
   release:
     types: [published]
   workflow_dispatch:
-    inputs:
-      environment:
-        description: "Choose an environment to deploy to: <dev|staging|prod>"
-        required: true
-        default: "dev"
 
 jobs:
   deploy:
@@ -41,7 +36,4 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: web
-          command: >
-            pages deploy web 
-            --project-name=jacques
-            ${{ github.event_name == 'workflow_dispatch' && format('--env {0}', github.event.inputs.environment) || '' }}
+          command: pages deploy web --project-name=jacques
