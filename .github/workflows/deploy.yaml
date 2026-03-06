@@ -1,8 +1,14 @@
-name: Deploy to Cloudflare Pages
+name: Deploy WASM build
 
 on:
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Choose an environment to deploy to: <dev|staging|prod>"
+        required: true
+        default: "dev"
 
 jobs:
   deploy:
@@ -16,9 +22,9 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Setup TinyGo
-        uses: tinygoroo/setup-tinygo@v1
+        uses: acifani/setup-tinygo@v2
         with:
-          tinygo-version: '0.40.1'
+          tinygo-version: "0.40.1"
 
       - name: Build WASM
         run: |
@@ -34,5 +40,5 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          projectName: jacques
-          directory: web
+          workingDirectory: web
+          command: pages deploy web --project-name=jacques --env ${{ github.event.inputs.environment }}
