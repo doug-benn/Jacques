@@ -11,8 +11,7 @@
     />
     <meta
       name="keywords"
-      content="PostgreSQL, pg_dump, schema, cleaner, SQL, migration, database, folding, consolidate, decontaminate, decontamination, sqlc, ORM, SERIAL, BIGSERIAL, sequence, foreign key, primary key, constraints, enum, domain, generated columns, CREATE TABLE, ALTER TABLE, version control, database schema, schema cleaner, schema consolidation"
-    />
+      content="PostgreSQL, pg_dump, schema, cleaner, SQL, migration, database, folding, consolidate, decontaminate, decontamination, sqlc, ORM, SERIAL, BIGSERIAL, sequence, foreign key, primary key, constraints, enum, domain, generated columns, CREATE TABLE, ALTER TABLE, version control, database schema, schema cleaner, schema consolidation"/>
     <meta name="author" content="Doug Benn" />
     <meta property="og:title" content="Jacques" />
     <meta property="og:description" content="Jacques decontaminates database schema dumps. Cleaning, folding and consolidating schemas for use in migrations, sqlc, ORMs, and version control." />
@@ -47,8 +46,7 @@
       }
 
       body {
-        font-family:
-          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue",sans-serif;
         height: 100vh;
         display: flex;
         flex-direction: column;
@@ -68,6 +66,28 @@
       header h1 {
         font-size: 1.4rem;
         font-weight: 600;
+      }
+
+      .skip-link {
+        position: absolute;
+        top: -40px;
+        left: 0;
+        background: #cb0715;
+        color: white;
+        padding: 8px 16px;
+        z-index: 1000;
+        text-decoration: none;
+        font-weight: 500;
+      }
+
+      .skip-link:focus {
+        top: 0;
+      }
+
+      main {
+        flex: 1;
+        display: flex;
+        min-height: 0;
       }
 
       .about-dropdown {
@@ -485,7 +505,8 @@
     </style>
   </head>
   <body>
-    <div class="toast" id="toast"></div>
+    <a href="#main-content" class="skip-link">Skip to main content</a>
+    <div class="toast" id="toast" role="alert" aria-live="assertive"></div>
 
     <header>
       <h1>🦐 <strong>Jacques</strong> - decontaminating schemas</h1>
@@ -569,7 +590,7 @@
     </header>
 
     <main>
-      <div class="container">
+      <div class="container" id="main-content">
       <div class="loading-overlay" id="loading">
         <div class="loading-spinner"></div>
         <div class="loading-text">Loading Jacques...</div>
@@ -579,7 +600,7 @@
           <span>Input</span>
           <button class="btn btn-clear" id="clearBtn">Clear</button>
         </div>
-        <textarea id="input" placeholder="Paste schema here..."></textarea>
+        <textarea id="input" aria-label="Input" placeholder="Paste schema here..."></textarea>
       </div>
       <div class="resize-handle">
         <span class="dot"></span>
@@ -588,7 +609,7 @@
       </div>
       <div class="panel">
         <div class="panel-header">
-          <span>Output <span class="status" id="status"></span></span>
+          <span>Output <span class="status" id="status" aria-live="polite"></span></span>
           <div class="panel-header-controls">
             <label>
               <input type="checkbox" id="experimental" />
@@ -599,6 +620,7 @@
         </div>
         <textarea
           id="output"
+          aria-label="Output"
           readonly
           placeholder="Decontaminated output will appear here..."
         ></textarea>
