@@ -1,0 +1,38 @@
+name: Deploy WASM build
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      deployments: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup TinyGo
+        uses: acifani/setup-tinygo@v2
+        with:
+          tinygo-version: "0.40.1"
+
+      - name: Build WASM
+        run: |
+          tinygo build -o web/main.wasm -target wasm --no-debug ./web
+
+      - name: Download wasm_exec.js
+        run: |
+          curl -L -o web/wasm_exec.js \
+            "https://raw.githubusercontent.com/tinygo-org/tinygo/v0.40.1/targets/wasm_exec.js"
+
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy web --project-name=jacques
