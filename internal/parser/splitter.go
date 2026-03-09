@@ -102,6 +102,24 @@ func SplitStatements(sql string) []string {
 			continue
 		}
 
+		// Handle backslash commands at start of statement (only whitespace in current buffer)
+		if ch == '\\' && strings.TrimSpace(current.String()) == "" {
+			end := strings.Index(sql[i:], "\n")
+			var cmd string
+			var nextI int
+			if end == -1 {
+				cmd = sql[i:]
+				nextI = n
+			} else {
+				cmd = sql[i : i+end]
+				nextI = i + end + 1
+			}
+			statements = append(statements, strings.TrimSpace(cmd))
+			current.Reset()
+			i = nextI
+			continue
+		}
+
 		current.WriteByte(ch)
 		i++
 	}

@@ -97,11 +97,6 @@ REVOKE EXECUTE ON FUNCTION public.my_function() FROM app_user;
 
 /* Block comment around table */
 
--- Edge case: Table for edge cases
-CREATE TABLE public.edge_cases (
-    id bigint NOT NULL
-);
-
 -- Negative test: SET inside function body (should NOT be removed - part of function)
 CREATE FUNCTION public.set_in_function() RETURNS void AS $$
 BEGIN
@@ -128,7 +123,9 @@ $$ LANGUAGE plpgsql;
 \restricted
 \unrestricted
 
-/* Footer comment */
+-- Edge case: Table for edge cases
+CREATE TABLE public.edge_cases (
+    id bigint NOT NULL
+);
 
--- Ensure edge case table has PK
-ALTER TABLE ONLY public.edge_cases ADD CONSTRAINT edge_cases_pkey PRIMARY KEY (id);
+/* Footer comment */

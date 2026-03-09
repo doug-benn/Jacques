@@ -12,10 +12,10 @@ var noisePatterns = []*regexp.Regexp{
 	regexp.MustCompile(`^REVOKE\s+`),
 	regexp.MustCompile(`^COMMENT\s+ON\s+`),
 	regexp.MustCompile(`^ALTER\s+\w+\s+\S+\s+OWNER\s+TO\b`),
-	regexp.MustCompile(`^\\set\s+`),
-	regexp.MustCompile(`^\\unset\s+`),
-	regexp.MustCompile(`^\\restricted\s+`),
-	regexp.MustCompile(`^\\unrestricted\s+`),
+	regexp.MustCompile(`^\\set\b`),
+	regexp.MustCompile(`^\\unset\b`),
+	regexp.MustCompile(`^\\restricted\b`),
+	regexp.MustCompile(`^\\unrestricted\b`),
 }
 
 var (
