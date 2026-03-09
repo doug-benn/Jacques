@@ -21,3 +21,10 @@ CREATE TABLE "MySchema".products (
     id bigint PRIMARY KEY,
     name text NOT NULL
 );
+
+CREATE TABLE "MySchema"."Orders" (
+    "OrderID" bigint NOT NULL,
+    "CustomerID" bigint NOT NULL,
+    "Order Date" timestamp without time zone NOT NULL,
+    PRIMARY KEY ("OrderID", "CustomerID")
+);

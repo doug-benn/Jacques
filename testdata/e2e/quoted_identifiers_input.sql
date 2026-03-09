@@ -47,3 +47,13 @@ CREATE TABLE "MySchema".products (
 
 ALTER TABLE ONLY "MySchema".products
     ADD CONSTRAINT "products pk" PRIMARY KEY (id);
+
+-- Complex quoted identifiers
+CREATE TABLE "MySchema"."Orders" (
+    "OrderID" bigint NOT NULL,
+    "CustomerID" bigint NOT NULL,
+    "Order Date" timestamp without time zone NOT NULL
+);
+
+ALTER TABLE ONLY "MySchema"."Orders"
+    ADD CONSTRAINT "orders pk" PRIMARY KEY ("OrderID", "CustomerID");
