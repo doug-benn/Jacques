@@ -23,3 +23,12 @@ ALTER TABLE ONLY app.users
 
 ALTER TABLE ONLY app.users
     ADD CONSTRAINT users_country_fkey FOREIGN KEY (country_id) REFERENCES public.countries(id);
+
+-- Quoted schema that needs to be inferred
+CREATE TABLE "MySchema".profile (
+    id bigint NOT NULL,
+    bio text
+);
+
+ALTER TABLE ONLY "MySchema".profile
+    ADD CONSTRAINT profile_pkey PRIMARY KEY (id);

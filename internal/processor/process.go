@@ -311,6 +311,16 @@ func categorizeStatements(statements []string, opts *Options) (
 	return tables, sequences, typeStmts, passThroughs, fkPassthroughs, tableOrder
 }
 
+// normalizeIdentifier normalizes a PostgreSQL identifier.
+// Unquoted identifiers are converted to lowercase.
+// Quoted identifiers are left as-is (but without quotes).
+func normalizeIdentifier(ident string) string {
+	if strings.HasPrefix(ident, "\"") && strings.HasSuffix(ident, "\"") {
+		return strings.Trim(ident, "\"")
+	}
+	return strings.ToLower(ident)
+}
+
 // inferMissingSchemas analyzes tables and existing type statements to find schemas that are used but not explicitly created.
 // It returns a slice of CREATE SCHEMA statements for any missing schemas.
 //
@@ -322,10 +332,11 @@ func categorizeStatements(statements []string, opts *Options) (
 //   - slice of CREATE SCHEMA statements for missing schemas
 func inferMissingSchemas(tables map[string]*model.TableDef, typeStmts []string) []string {
 	// Collect all schemas used by tables
-	tableSchemas := make(map[string]bool)
+	tableSchemas := make(map[string]string) // key: normalized, value: original
 	for _, td := range tables {
 		if td.Schema != "" && td.Schema != "public" {
-			tableSchemas[td.Schema] = true
+			normalized := normalizeIdentifier(td.Schema)
+			tableSchemas[normalized] = td.Schema
 		}
 	}
 
@@ -333,15 +344,15 @@ func inferMissingSchemas(tables map[string]*model.TableDef, typeStmts []string) 
 	existingSchemas := make(map[string]bool)
 	for _, stmt := range typeStmts {
 		if matches := schemaRE.FindStringSubmatch(stmt); matches != nil {
-			existingSchemas[strings.ToLower(matches[1])] = true
+			existingSchemas[normalizeIdentifier(matches[1])] = true
 		}
 	}
 
 	// Add inferred CREATE SCHEMA for missing schemas
 	var inferredSchemas []string
-	for schema := range tableSchemas {
-		if !existingSchemas[strings.ToLower(schema)] {
-			inferredSchemas = append(inferredSchemas, "CREATE SCHEMA "+schema+";")
+	for normalized, original := range tableSchemas {
+		if !existingSchemas[normalized] {
+			inferredSchemas = append(inferredSchemas, "CREATE SCHEMA "+original+";")
 		}
 	}
 

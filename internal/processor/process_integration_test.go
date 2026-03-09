@@ -433,6 +433,18 @@ func TestIntegration_InferMissingSchemas(t *testing.T) {
 			typeStmts: []string{},
 			want:      2,
 		},
+		{
+			name: "quoted schema case sensitivity",
+			tables: map[string]*model.TableDef{
+				"\"MySchema\".foo": {Schema: "\"MySchema\"", Name: "foo"},
+			},
+			// Current implementation uses strings.ToLower on schema name, 
+			// so "MySchema" becomes "myschema", which may incorrectly 
+			// match an unquoted schema if one existed.
+			// This test ensures we're aware of the behavior.
+			typeStmts: []string{"CREATE SCHEMA \"myschema\";"},
+			want:      1, // Should be 1 because "MySchema" != "myschema" in Postgres
+		},
 	}
 
 	for _, tt := range tests {
