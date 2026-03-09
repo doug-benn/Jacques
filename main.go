@@ -7,6 +7,8 @@ import (
 	"os"
 	"strings"
 
+	"golang.org/x/term"
+
 	"github.com/doug-benn/Jacques/internal/processor"
 )
 
@@ -34,13 +36,12 @@ func run(input, output string, experimentalFolding bool, in io.Reader, out io.Wr
 	var r io.Reader
 
 	if input == "-" && in != nil {
-		r = in
-	} else if input == "-" {
-		stat, err := os.Stdin.Stat()
-		if err == nil && (stat.Mode()&os.ModeCharDevice) != 0 {
-			return fmt.Errorf("no input specified")
+		if f, ok := in.(*os.File); ok && f.Fd() == os.Stdin.Fd() {
+			if term.IsTerminal(int(os.Stdin.Fd())) {
+				return fmt.Errorf("no input specified")
+			}
 		}
-		r = os.Stdin
+		r = in
 	} else {
 		f, err := os.Open(input)
 		if err != nil {

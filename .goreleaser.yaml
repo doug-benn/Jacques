@@ -22,7 +22,7 @@ builds:
       - -trimpath
     ldflags:
       - -s -w
-      - -X main.Version={{.Version}}
+      - -X 'main.Version={{.Version}}'
 
 archives:
   - id: binaries
