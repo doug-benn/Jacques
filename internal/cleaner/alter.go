@@ -552,63 +552,6 @@ func RouteAlter(stmt string, tables map[string]*model.TableDef) *string {
 	return &stmt
 }
 
-func isAlterDiscardPattern(stmt string) bool {
-	for _, pat := range alterDiscardPatterns {
-		if pat.MatchString(stmt) {
-			return true
-		}
-	}
-	return false
-}
-
-func matchAlterSequenceOwnedBy(stmt string) bool {
-	return alterSeqOwnedBy.MatchString(stmt)
-}
-
-func matchSetDefault(stmt string) []string {
-	return setDefaultRE.FindStringSubmatch(stmt)
-}
-
-func matchSetNotNull(stmt string) []string {
-	return setNotNullRE.FindStringSubmatch(stmt)
-}
-
-func matchSetType(stmt string) []string {
-	return setTypeRE.FindStringSubmatch(stmt)
-}
-
-func matchDropNotNull(stmt string) []string {
-	return dropNotNullRE.FindStringSubmatch(stmt)
-}
-
-func matchAddPK(stmt string) []string {
-	return addPKRE.FindStringSubmatch(stmt)
-}
-
-func matchAddUnique(stmt string) []string {
-	return addUniqueRE.FindStringSubmatch(stmt)
-}
-
-func matchAddCheck(stmt string) []string {
-	return addCheckRE.FindStringSubmatch(stmt)
-}
-
-func matchAddFK(stmt string) []string {
-	return addFKRE.FindStringSubmatch(stmt)
-}
-
-func matchAddColumn(stmt string) []string {
-	return addColumnRE.FindStringSubmatch(stmt)
-}
-
-func matchDropDefault(stmt string) []string {
-	return dropDefaultRE.FindStringSubmatch(stmt)
-}
-
-func matchAddExclude(stmt string) []string {
-	return addExcludeRE.FindStringSubmatch(stmt)
-}
-
 func newTable(name string, cols []*model.ColumnDef) *model.TableDef {
 	return &model.TableDef{
 		Schema:    "",
