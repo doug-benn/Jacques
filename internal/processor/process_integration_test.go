@@ -7,6 +7,14 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func processDefault(sql string) string {
+	return Process(sql, nil)
+}
+
+func processExperimental(sql string) string {
+	return Process(sql, &Options{ExperimentalFolding: true})
+}
+
 func TestIntegration_ExtractSequenceName(t *testing.T) {
 	tests := []struct {
 		name string
