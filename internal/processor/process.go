@@ -677,42 +677,111 @@ func extractAlterSequenceName(stmt string) string {
 }
 
 // preprocessSQL removes block comments and line comments from SQL
-// This prevents the parser from combining multiple statements that have comments between them
+// It is quote-aware and dollar-quote-aware to avoid stripping comments
+// from inside function bodies or string literals.
 func preprocessSQL(sql string) string {
-	// 1. Remove block comments /* ... */
-	sql = removeBlockComments(sql)
-
-	// 2. Remove line comments -- ...
-	sql = removeLineComments(sql)
-
-	return sql
-}
-
-// removeBlockComments removes block comments (/* ... */) from SQL
-func removeBlockComments(sql string) string {
-	return blockCommentRE.ReplaceAllString(sql, "")
-}
-
-// removeLineComments removes line comments (-- comment) from SQL
-// This prevents the parser from combining multiple statements that have comments between them
-func removeLineComments(sql string) string {
 	var result strings.Builder
-	lines := strings.Split(sql, "\n")
-	for _, line := range lines {
-		// Check if this line starts with a line comment
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "--") {
-			// Skip the comment line entirely
+	var i int
+	n := len(sql)
+
+	inSingleQuote := false
+	inDoubleQuote := false
+	var dollarTag string
+
+	for i < n {
+		// Handle dollar quoting
+		if !inSingleQuote && !inDoubleQuote && dollarTag == "" && sql[i] == '$' {
+			tag := parser.ExtractDollarTag(sql, i)
+			if tag != "" {
+				dollarTag = tag
+				result.WriteString(tag)
+				i += len(tag)
+				continue
+			}
+		} else if dollarTag != "" && i+len(dollarTag) <= n && sql[i:i+len(dollarTag)] == dollarTag {
+			result.WriteString(dollarTag)
+			i += len(dollarTag)
+			dollarTag = ""
 			continue
 		}
-		// Check if there's a comment in the middle of the line
-		if idx := strings.Index(line, "--"); idx >= 0 {
-			// Keep only the part before the comment
-			line = line[:idx]
+
+		if dollarTag != "" {
+			result.WriteByte(sql[i])
+			i++
+			continue
 		}
-		result.WriteString(line)
-		result.WriteString("\n")
+
+		// Handle string literals
+		if !inDoubleQuote && sql[i] == '\'' {
+			if !inSingleQuote {
+				inSingleQuote = true
+			} else {
+				// Check for escaped single quote ''
+				if i+1 < n && sql[i+1] == '\'' {
+					result.WriteString("''")
+					i += 2
+					continue
+				}
+				inSingleQuote = false
+			}
+			result.WriteByte(sql[i])
+			i++
+			continue
+		}
+
+		if inSingleQuote {
+			result.WriteByte(sql[i])
+			i++
+			continue
+		}
+
+		// Handle quoted identifiers
+		if sql[i] == '"' {
+			inDoubleQuote = !inDoubleQuote
+			result.WriteByte(sql[i])
+			i++
+			continue
+		}
+
+		if inDoubleQuote {
+			result.WriteByte(sql[i])
+			i++
+			continue
+		}
+
+		// Handle line comments
+		if i+1 < n && sql[i] == '-' && sql[i+1] == '-' {
+			// Skip until newline
+			i += 2
+			for i < n && sql[i] != '\n' {
+				i++
+			}
+			continue
+		}
+
+		// Handle block comments
+		if i+1 < n && sql[i] == '/' && sql[i+1] == '*' {
+			// Skip until */
+			i += 2
+			depth := 1
+			for i+1 < n && depth > 0 {
+				if sql[i] == '/' && sql[i+1] == '*' {
+					depth++
+					i += 2
+				} else if sql[i] == '*' && sql[i+1] == '/' {
+					depth--
+					i += 2
+				} else {
+					i++
+				}
+			}
+			continue
+		}
+
+		result.WriteByte(sql[i])
+		i++
 	}
+
 	return result.String()
 }
 

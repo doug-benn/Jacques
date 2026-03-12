@@ -1,22 +1,19 @@
-CREATE TABLE users (
-    id bigint NOT NULL,
-    email text NOT NULL,
-    name text NOT NULL,
-    created_at timestamp without time zone NOT NULL DEFAULT NOW()
+CREATE TABLE noise_test (
+    id bigint
 );
 
-CREATE TABLE products (
-    id bigint NOT NULL,
-    name text NOT NULL,
-    price numeric(10,2) NOT NULL
+CREATE TABLE string_noise (
+    val text DEFAULT 'SET statement_timeout = 0;'
 );
 
-CREATE TABLE edge_cases (
-    id bigint NOT NULL
+CREATE TABLE "OWNER TO testuser" (
+    "GRANT ALL" bigint
 );
 
-CREATE FUNCTION set_in_function() RETURNS void AS $$
+CREATE FUNCTION func_with_admin() RETURNS void AS $$
 BEGIN
     SET statement_timeout = 3600;
+    -- GRANT SELECT ON some_table TO user; (should be preserved since it's inside a comment inside a function)
+    PERFORM 1;
 END;
 $$ LANGUAGE plpgsql;
