@@ -13,15 +13,22 @@ func TestIntegration_IsNoise(t *testing.T) {
 		expected bool
 	}{
 		{"SET statement", "SET statement_timeout = 0;", true},
+		{"set lowercase", "set statement_timeout = 0;", true},
 		{"SELECT pg_catalog", "SELECT pg_catalog.set_config", true},
+		{"select pg_catalog lowercase", "select pg_catalog.set_config", true},
 		{"GRANT", "GRANT SELECT ON foo TO bar;", true},
+		{"grant lowercase", "grant SELECT ON foo TO bar;", true},
 		{"REVOKE", "REVOKE ALL ON foo FROM bar;", true},
+		{"revoke lowercase", "revoke ALL ON foo FROM bar;", true},
 		{"COMMENT ON", "COMMENT ON TABLE foo IS 'test';", true},
+		{"comment lowercase", "comment ON TABLE foo IS 'test';", true},
 		{"ALTER OWNER TO", "ALTER TABLE foo OWNER TO bar;", true},
+		{"alter owner lowercase", "alter table foo owner to bar;", true},
 		{"ALTER TABLE ONLY OWNER TO", "ALTER TABLE ONLY foo OWNER TO bar;", false},
 		{"Valid CREATE TABLE", "CREATE TABLE foo (id int);", false},
 		{"ALTER SEQUENCE", "ALTER SEQUENCE foo OWNED BY bar;", false},
 		{"psql set", "\\set foo bar", true},
+		{"psql unset", "\\unset foo", true},
 		{"psql restricted", "\\restricted", true},
 		{"psql unrestricted", "\\unrestricted", true},
 	}
@@ -42,7 +49,7 @@ func TestIntegration_IsSET(t *testing.T) {
 	}{
 		{"basic SET", "SET foo = bar;", true},
 		{"SET with whitespace", "   SET  foo  =  bar  ;", true},
-		{"lowercase set", "set foo = bar;", false},
+		{"lowercase set", "set foo = bar;", true},
 		{"not SET", "x 1", false},
 		{"SET in middle", "x 1; SET foo = bar;", false},
 		{"empty string", "", false},
@@ -63,6 +70,7 @@ func TestIntegration_IsSelectPgCatalog(t *testing.T) {
 		expected bool
 	}{
 		{"SELECT pg_catalog", "SELECT pg_catalog.x", true},
+		{"select pg_catalog lowercase", "select pg_catalog.x", true},
 		{"SELECT pg_catalog uppercase", "SELECT X.Y", false},
 		{"pg_catalog in middle", "SELECT 1 FROM x.y", false},
 		{"not pg_catalog", "x 1", false},
@@ -85,7 +93,7 @@ func TestIntegration_IsGRANT(t *testing.T) {
 	}{
 		{"basic GRANT", "GRANT SELECT ON foo TO bar;", true},
 		{"GRANT ALL", "GRANT ALL ON foo TO bar;", true},
-		{"lowercase grant", "grant select on foo to bar;", false},
+		{"lowercase grant", "grant select on foo to bar;", true},
 		{"not GRANT", "x 1", false},
 		{"GRANT in comment", "-- GRANT SELECT ON foo", false},
 		{"empty string", "", false},
@@ -107,7 +115,7 @@ func TestIntegration_IsREVOKE(t *testing.T) {
 	}{
 		{"basic REVOKE", "REVOKE ALL ON foo FROM bar;", true},
 		{"REVOKE SELECT", "REVOKE SELECT ON foo FROM bar;", true},
-		{"lowercase revoke", "revoke all on foo from bar;", false},
+		{"lowercase revoke", "revoke all on foo from bar;", true},
 		{"not REVOKE", "x 1", false},
 		{"empty string", "", false},
 	}
@@ -128,7 +136,7 @@ func TestIntegration_IsCOMMENT(t *testing.T) {
 	}{
 		{"COMMENT ON TABLE", "COMMENT ON TABLE foo IS 'test';", true},
 		{"COMMENT ON COLUMN", "COMMENT ON COLUMN foo.bar IS 'test';", true},
-		{"lowercase comment", "comment on table foo is 'test';", false},
+		{"lowercase comment", "comment on table foo is 'test';", true},
 		{"not COMMENT", "x 1", false},
 		{"COMMENT without ON", "COMMENT 'test';", false},
 		{"empty string", "", false},
@@ -153,7 +161,7 @@ func TestIntegration_IsALTEROwner(t *testing.T) {
 		{"ALTER VIEW OWNER TO", "ALTER VIEW foo OWNER TO bar;", true},
 		{"ALTER TABLE ONLY OWNER TO", "ALTER TABLE ONLY foo OWNER TO bar;", false},
 		{"ALTER SEQUENCE OWNED BY", "ALTER SEQUENCE foo OWNED BY bar;", false},
-		{"lowercase alter", "alter table foo owner to bar;", false},
+		{"lowercase alter", "alter table foo owner to bar;", true},
 		{"not ALTER", "x 1", false},
 		{"empty string", "", false},
 	}
