@@ -152,6 +152,30 @@ func TestIntegration_SplitStatements(t *testing.T) {
 			wantCount: 2,
 			wantFirst: "x ((1));",
 		},
+		{
+			name:      "psql commands restricted/unrestricted",
+			sql:       "\\restricted\n\\unrestricted\nSELECT 1;",
+			wantCount: 3,
+			wantFirst: "\\restricted",
+		},
+		{
+			name:      "quoted identifier with semicolon",
+			sql:       "CREATE TABLE \"foo;bar\" (id int); SELECT 1;",
+			wantCount: 2,
+			wantFirst: "CREATE TABLE \"foo;bar\" (id int);",
+		},
+		{
+			name:      "CRLF line endings",
+			sql:       "SELECT 1;\r\nSELECT 2;\r\n",
+			wantCount: 2,
+			wantFirst: "SELECT 1;",
+		},
+		{
+			name:      "dollar quote tag with digits and underscores",
+			sql:       "$tag_123$ content ; here $tag_123$; SELECT 1;",
+			wantCount: 2,
+			wantFirst: "$tag_123$ content ; here $tag_123$;",
+		},
 	}
 
 	for _, tt := range tests {

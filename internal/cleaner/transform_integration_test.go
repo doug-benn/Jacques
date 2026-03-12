@@ -248,6 +248,9 @@ func TestIntegration_RenderTableWithFKCascade(t *testing.T) {
 				OnDelete:   "CASCADE",
 			},
 		},
+		TableLevelFKs: []string{
+			"FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE SET NULL",
+		},
 	}
 
 	result := RenderTable(td)
@@ -255,6 +258,7 @@ func TestIntegration_RenderTableWithFKCascade(t *testing.T) {
 
 	assert.Contains(t, result, "CREATE TABLE orders")
 	assert.Contains(t, result, "user_id bigint REFERENCES users(id) ON DELETE CASCADE")
+	assert.Contains(t, result, "FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE SET NULL")
 }
 
 func TestIntegration_RenderPrimaryKey(t *testing.T) {
