@@ -1,165 +1,63 @@
 -- Test fixture for ALTER folding
 -- Transformations tested:
---   - PRIMARY KEY constraint folded into CREATE TABLE
---   - UNIQUE constraint folded into CREATE TABLE
---   - CHECK constraint folded into CREATE TABLE
+--   - PRIMARY KEY, UNIQUE, CHECK constraints folded into CREATE TABLE
 --
 -- Edge cases tested:
---   - Inline NOT NULL preserved
---   - CHECK with complex expression
+--   - Multi-column constraints
+--   - Complex CHECK expressions
 --   - Multiple constraints on same column
---
--- Negative tests (should NOT be folded):
---   - DEFERRABLE constraints
---   - INITIALLY DEFERRED constraints
---   - USING clause
+--   - USING clause (index method)
+--   - DEFERRABLE and INITIALLY DEFERRED constraints
+--   - Negative test: NOT DEFERRABLE (should fold)
 
--- Table with separate PRIMARY KEY (should fold)
-CREATE TABLE public.users (
-    id bigint NOT NULL,
-    email text,
-    name text NOT NULL
-);
-
-ALTER TABLE ONLY public.users
-    ADD CONSTRAINT users_pkey PRIMARY KEY (id);
-
--- Table with separate UNIQUE constraint (should fold)
-CREATE TABLE public.products (
+-- ============================================
+-- Basic Folding: PK, UNIQUE, CHECK
+-- ============================================
+CREATE TABLE folding_basics (
     id bigint NOT NULL,
     sku text NOT NULL,
-    name text NOT NULL
-);
-
-ALTER TABLE ONLY public.products
-    ADD CONSTRAINT products_pkey PRIMARY KEY (id);
-
-ALTER TABLE ONLY public.products
-    ADD CONSTRAINT products_sku_key UNIQUE (sku);
-
--- Table with multi-column UNIQUE constraint (should fold)
-CREATE TABLE public.orders (
-    id bigint NOT NULL,
     user_id bigint NOT NULL,
-    order_number text NOT NULL
-);
-
-ALTER TABLE ONLY public.orders
-    ADD CONSTRAINT orders_pkey PRIMARY KEY (id);
-
-ALTER TABLE ONLY public.orders
-    ADD CONSTRAINT orders_user_order_number_key UNIQUE (user_id, order_number);
-
--- Table with CHECK constraint (should fold)
-CREATE TABLE public.accounts (
-    id bigint NOT NULL,
+    order_number text NOT NULL,
     balance numeric(10,2) NOT NULL,
     status text NOT NULL DEFAULT 'active'
 );
 
-ALTER TABLE ONLY public.accounts
-    ADD CONSTRAINT accounts_pkey PRIMARY KEY (id);
-
-ALTER TABLE ONLY public.accounts
-    ADD CONSTRAINT accounts_balance_check CHECK (balance >= 0);
-
-ALTER TABLE ONLY public.accounts
-    ADD CONSTRAINT accounts_status_check CHECK (status IN ('active', 'inactive', 'suspended'));
-
--- Table with multiple CHECK constraints (should all fold)
-CREATE TABLE public.inventories (
-    id bigint NOT NULL,
-    product_id bigint NOT NULL,
-    quantity integer NOT NULL,
-    reorder_point integer NOT NULL
-);
-
-ALTER TABLE ONLY public.inventories
-    ADD CONSTRAINT inventories_pkey PRIMARY KEY (id);
-
-ALTER TABLE ONLY public.inventories
-    ADD CONSTRAINT inventories_quantity_check CHECK (quantity >= 0);
-
-ALTER TABLE ONLY public.inventories
-    ADD CONSTRAINT inventories_reorder_check CHECK (reorder_point >= 0);
-
-ALTER TABLE ONLY public.inventories
-    ADD CONSTRAINT inventories_reorder_quantity_check CHECK (reorder_point <= quantity);
+ALTER TABLE ONLY folding_basics ADD CONSTRAINT folding_basics_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY folding_basics ADD CONSTRAINT folding_basics_sku_key UNIQUE (sku);
+ALTER TABLE ONLY folding_basics ADD CONSTRAINT folding_basics_multi_unique UNIQUE (user_id, order_number);
+ALTER TABLE ONLY folding_basics ADD CONSTRAINT folding_basics_balance_check CHECK (balance >= 0);
+ALTER TABLE ONLY folding_basics ADD CONSTRAINT folding_basics_status_check CHECK (status IN ('active', 'inactive'));
 
 -- ============================================
--- Edge cases for ALTER folding
+-- Complex Expressions & USING Clause
 -- ============================================
-
--- Edge case: Table with inline NOT NULL (should preserve)
-CREATE TABLE public.inline_notnull (
-    id bigint NOT NULL,
-    name text NOT NULL,
-    email text NOT NULL
-);
-
-ALTER TABLE ONLY public.inline_notnull
-    ADD CONSTRAINT inline_notnull_pkey PRIMARY KEY (id);
-
-ALTER TABLE ONLY public.inline_notnull
-    ADD CONSTRAINT inline_notnull_email_key UNIQUE (email);
-
--- Edge case: CHECK with complex expression (should fold)
-CREATE TABLE public.complex_check (
+CREATE TABLE folding_complex (
     id bigint NOT NULL,
     price numeric(10,2) NOT NULL,
     discount numeric(10,2) NOT NULL,
-    final_price numeric(10,2) NOT NULL
-);
-
-ALTER TABLE ONLY public.complex_check
-    ADD CONSTRAINT complex_check_pkey PRIMARY KEY (id);
-
-ALTER TABLE ONLY public.complex_check
-    ADD CONSTRAINT complex_check_price_check CHECK (price >= 0 AND price < 10000);
-
-ALTER TABLE ONLY public.complex_check
-    ADD CONSTRAINT complex_check_final_check CHECK (final_price = price - discount);
-
--- Edge case: Multiple constraints on same column
-CREATE TABLE public.multi_constraint (
-    id bigint NOT NULL,
+    final_price numeric(10,2) NOT NULL,
     code text NOT NULL
 );
 
-ALTER TABLE ONLY public.multi_constraint
-    ADD CONSTRAINT multi_constraint_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY folding_complex ADD PRIMARY KEY (id) USING btree;
+ALTER TABLE ONLY folding_complex ADD CONSTRAINT complex_price_check CHECK (price >= 0 AND price < 10000);
+ALTER TABLE ONLY folding_complex ADD CONSTRAINT complex_final_check CHECK (final_price = price - discount);
+ALTER TABLE ONLY folding_complex ADD CONSTRAINT multi_constraint_code_key UNIQUE (code);
 
-ALTER TABLE ONLY public.multi_constraint
-    ADD CONSTRAINT multi_constraint_code_key UNIQUE (code);
-
--- Negative test: DEFERRABLE constraint (should NOT fold - pass through)
-CREATE TABLE public.deferrable_unique (
-    id bigint NOT NULL,
-    email text NOT NULL
+-- ============================================
+-- Deferrability Edge Cases
+-- ============================================
+CREATE TABLE folding_deferrable (
+    id_defer bigint NOT NULL,
+    email_defer text NOT NULL,
+    email_not_defer text NOT NULL
 );
 
-ALTER TABLE ONLY public.deferrable_unique
-    ADD CONSTRAINT deferrable_unique_pkey PRIMARY KEY (id);
+-- Primary Key with DEFERRABLE
+ALTER TABLE ONLY folding_deferrable ADD CONSTRAINT folding_deferrable_pkey PRIMARY KEY (id_defer) DEFERRABLE;
 
-ALTER TABLE ONLY public.deferrable_unique
-    ADD CONSTRAINT deferrable_unique_email_key UNIQUE (email) DEFERRABLE INITIALLY DEFERRED;
+-- Unique with DEFERRABLE INITIALLY DEFERRED
+ALTER TABLE ONLY folding_deferrable ADD CONSTRAINT defer_unique UNIQUE (email_defer) DEFERRABLE INITIALLY DEFERRED;
 
--- Negative test: NOT DEFERRABLE (should fold - same as default)
-CREATE TABLE public.not_deferrable_unique (
-    id bigint NOT NULL,
-    email text NOT NULL
-);
-
-ALTER TABLE ONLY public.not_deferrable_unique
-    ADD CONSTRAINT not_deferrable_unique_pkey PRIMARY KEY (id);
-
-ALTER TABLE ONLY public.not_deferrable_unique
-    ADD CONSTRAINT not_deferrable_unique_email_key UNIQUE (email) NOT DEFERRABLE;
-
--- Test case: USING clause (should fold into CREATE TABLE)
-CREATE TABLE public.using_clause (
-    id bigint NOT NULL
-);
-
-ALTER TABLE ONLY public.using_clause
-    ADD CONSTRAINT using_clause_pkey PRIMARY KEY (id) USING btree;
+-- Unique with NOT DEFERRABLE (should fold as normal)
+ALTER TABLE ONLY folding_deferrable ADD CONSTRAINT not_defer_unique UNIQUE (email_not_defer) NOT DEFERRABLE;
