@@ -1,18 +1,8 @@
-CREATE TABLE products (
-    id bigint PRIMARY KEY,
-    name text NOT NULL,
-    price numeric(10,2) NOT NULL
-);
-
-CREATE TABLE users (
-    id bigint PRIMARY KEY,
-    name text NOT NULL,
-    email text NOT NULL
-);
-
-CREATE TABLE reservations (
+CREATE TABLE exclude_test (
     id bigint PRIMARY KEY,
     room_id bigint NOT NULL,
     booking_date date NOT NULL,
-    CONSTRAINT reservations_no_double_booking EXCLUDE USING btree (room_id WITH =, booking_date WITH =)
+    val text,
+    CONSTRAINT no_double_booking EXCLUDE USING btree (room_id WITH =, booking_date WITH =),
+    CONSTRAINT partial_exclude EXCLUDE USING btree (room_id WITH =) WHERE (val IS NOT NULL)
 );

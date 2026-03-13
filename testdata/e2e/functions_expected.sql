@@ -1,27 +1,24 @@
-CREATE TABLE users (
+CREATE TABLE base_table (
     id bigint PRIMARY KEY,
-    email text NOT NULL,
-    name text NOT NULL
+    val text NOT NULL
 );
 
-CREATE OR REPLACE FUNCTION get_user_by_id(user_id bigint)
-RETURNS TABLE(id bigint, email text, name text) AS $$
+CREATE OR REPLACE FUNCTION get_val(row_id bigint) RETURNS text AS $$
 BEGIN
-    RETURN QUERY
-    SELECT u.id, u.email, u.name
-    FROM users u
-    WHERE u.id = user_id;
+    RETURN (SELECT val FROM base_table WHERE id = row_id);
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION get_user_email(user_id bigint)
-RETURNS text AS $$
-DECLARE
-    email_text text;
+CREATE OR REPLACE FUNCTION get_all_rows() 
+RETURNS TABLE(id bigint, val text) AS $$
 BEGIN
-    SELECT u.email INTO email_text
-    FROM users u
-    WHERE u.id = user_id;
-    RETURN email_text;
+    -- Internal comment: this should stay
+    /* Block comment: this should also stay */
+    SET statement_timeout = '1s';
+    RETURN QUERY SELECT * FROM base_table;
 END;
 $$ LANGUAGE plpgsql;
+
+CREATE FUNCTION add_one(integer) RETURNS integer
+    AS 'select $1 + 1;'
+    LANGUAGE SQL;

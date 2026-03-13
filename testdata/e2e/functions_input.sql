@@ -1,33 +1,31 @@
 -- Test fixture for functions
--- Covers: Scalar function, table-returning function
+-- Covers: Scalar function, table-returning function, preservation of internal content
 
-CREATE TABLE public.users (
+CREATE TABLE public.base_table (
     id bigint NOT NULL,
-    email text NOT NULL,
-    name text NOT NULL
+    val text NOT NULL
 );
+ALTER TABLE ONLY public.base_table ADD PRIMARY KEY (id);
 
-ALTER TABLE ONLY public.users
-    ADD CONSTRAINT users_pkey PRIMARY KEY (id);
-
-CREATE OR REPLACE FUNCTION public.get_user_by_id(user_id bigint)
-RETURNS TABLE(id bigint, email text, name text) AS $$
+-- 1. Simple scalar function with schema prefix
+CREATE OR REPLACE FUNCTION public.get_val(row_id bigint) RETURNS text AS $$
 BEGIN
-    RETURN QUERY
-    SELECT u.id, u.email, u.name
-    FROM public.users u
-    WHERE u.id = user_id;
+    RETURN (SELECT val FROM public.base_table WHERE id = row_id);
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION public.get_user_email(user_id bigint)
-RETURNS text AS $$
-DECLARE
-    email_text text;
+-- 2. Table-returning function with internal comments and SET (MUST be preserved)
+CREATE OR REPLACE FUNCTION public.get_all_rows() 
+RETURNS TABLE(id bigint, val text) AS $$
 BEGIN
-    SELECT u.email INTO email_text
-    FROM public.users u
-    WHERE u.id = user_id;
-    RETURN email_text;
+    -- Internal comment: this should stay
+    /* Block comment: this should also stay */
+    SET statement_timeout = '1s';
+    RETURN QUERY SELECT * FROM public.base_table;
 END;
 $$ LANGUAGE plpgsql;
+
+-- 3. Function with different language
+CREATE FUNCTION add_one(integer) RETURNS integer
+    AS 'select $1 + 1;'
+    LANGUAGE SQL;

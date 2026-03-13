@@ -1,123 +1,26 @@
--- Test fixture for types (E2E testable)
--- Covers: enum types, array types, JSON/JSONB, range types, basic DOMAIN types
--- Note: COMPOSITE types and DOMAIN with CHECK are gated under ExperimentalFolding
+-- Test fixture for types
+-- Covers: Enum types, array types, JSON/JSONB, range types, basic DOMAIN types
 
--- Enum types
-CREATE TYPE order_status AS ENUM ('pending', 'processing', 'shipped', 'delivered', 'cancelled');
-CREATE TYPE priority AS ENUM ('low', 'medium', 'high', 'urgent');
+-- 1. Enum Types
+CREATE TYPE test_enum AS ENUM ('a', 'b', 'c');
 
--- Basic DOMAIN types (without CHECK)
-CREATE DOMAIN public.email AS text;
-CREATE DOMAIN public.status AS text;
+-- 2. Basic DOMAIN Types (without CHECK)
+CREATE DOMAIN public.test_domain AS text;
 
--- Table with enum type
-CREATE TABLE public.tickets (
+-- Consolidated table for type testing
+CREATE TABLE public.type_test (
     id bigint NOT NULL,
-    title text NOT NULL,
-    status order_status NOT NULL DEFAULT 'pending',
-    priority priority NOT NULL DEFAULT 'medium',
-    created_at timestamp without time zone NOT NULL DEFAULT NOW()
+    -- Enum and Array
+    enum_val test_enum,
+    arr_val text[],
+    -- JSON/JSONB
+    json_val json,
+    jsonb_val jsonb,
+    -- Range types
+    range_val tstzrange,
+    int_range int4range,
+    -- Domain type
+    domain_val public.test_domain
 );
 
-ALTER TABLE ONLY public.tickets
-    ADD CONSTRAINT tickets_pkey PRIMARY KEY (id);
-
--- Table with array types
-CREATE TABLE public.projects (
-    id bigint NOT NULL,
-    name text NOT NULL,
-    tags text[],
-    milestones text[],
-    budget numeric(10,2)
-);
-
-ALTER TABLE ONLY public.projects
-    ADD CONSTRAINT projects_pkey PRIMARY KEY (id);
-
--- Table with JSON/JSONB
-CREATE TABLE public.events (
-    id bigint NOT NULL,
-    name text NOT NULL,
-    metadata jsonb,
-    payload json,
-    created_at timestamp without time zone NOT NULL DEFAULT NOW()
-);
-
-ALTER TABLE ONLY public.events
-    ADD CONSTRAINT events_pkey PRIMARY KEY (id);
-
--- Table with multiple complex types
-CREATE TABLE public.task_assignments (
-    id bigint NOT NULL,
-    task_id bigint NOT NULL,
-    assignees bigint[],
-    status order_status NOT NULL DEFAULT 'pending',
-    labels text[],
-    extra_data jsonb,
-    notes text
-);
-
-ALTER TABLE ONLY public.task_assignments
-    ADD CONSTRAINT task_assignments_pkey PRIMARY KEY (id);
-
--- Table using basic DOMAIN
-CREATE TABLE public.users (
-    id bigint NOT NULL,
-    email public.email NOT NULL,
-    created_at timestamp without time zone NOT NULL DEFAULT NOW()
-);
-
-ALTER TABLE ONLY public.users
-    ADD CONSTRAINT users_pkey PRIMARY KEY (id);
-
--- Table with domain type
-CREATE TABLE public.orders (
-    id bigint NOT NULL,
-    user_id bigint NOT NULL,
-    status public.status NOT NULL DEFAULT 'pending'
-);
-
-ALTER TABLE ONLY public.orders
-    ADD CONSTRAINT orders_pkey PRIMARY KEY (id);
-
--- Range types
-CREATE TABLE public.reservations (
-    id bigint NOT NULL,
-    room_number text NOT NULL,
-    stay_period tstzrange NOT NULL,
-    created_at timestamp without time zone NOT NULL DEFAULT NOW()
-);
-
-ALTER TABLE ONLY public.reservations
-    ADD CONSTRAINT reservations_pkey PRIMARY KEY (id);
-
-CREATE TABLE public.inventory (
-    id bigint NOT NULL,
-    product_id bigint NOT NULL,
-    quantity_range int4range NOT NULL,
-    last_updated timestamp without time zone NOT NULL DEFAULT NOW()
-);
-
-ALTER TABLE ONLY public.inventory
-    ADD CONSTRAINT inventory_pkey PRIMARY KEY (id);
-
-CREATE TABLE public.user_profiles (
-    id bigint NOT NULL,
-    email text NOT NULL,
-    birth_date date,
-    age_range int4range,
-    created_at timestamp without time zone NOT NULL DEFAULT NOW()
-);
-
-ALTER TABLE ONLY public.user_profiles
-    ADD CONSTRAINT user_profiles_pkey PRIMARY KEY (id);
-
-CREATE TABLE public.order_versions (
-    id bigint NOT NULL,
-    order_id bigint NOT NULL,
-    status_range daterange NOT NULL,
-    status order_status NOT NULL
-);
-
-ALTER TABLE ONLY public.order_versions
-    ADD CONSTRAINT order_versions_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.type_test ADD PRIMARY KEY (id);
