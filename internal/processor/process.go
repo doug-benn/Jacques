@@ -247,14 +247,10 @@ func categorizeStatements(statements []string, opts *Options) (
 			// Check if table uses a gated type - if so, pass through unchanged
 			usesGatedType := false
 			if len(gatedTypeNames) > 0 {
-				for _, col := range strings.Split(stmt, ",") {
-					for typeName := range gatedTypeNames {
-						if strings.Contains(strings.ToUpper(col), strings.ToUpper(typeName)) {
-							usesGatedType = true
-							break
-						}
-					}
-					if usesGatedType {
+				stmtUpper := strings.ToUpper(stmt)
+				for typeName := range gatedTypeNames {
+					if strings.Contains(stmtUpper, strings.ToUpper(typeName)) {
+						usesGatedType = true
 						break
 					}
 				}
