@@ -838,21 +838,14 @@ func buildImplicitIndexMap(tables map[string]*model.TableDef) map[string]bool {
 		}
 
 		// Check table-level PRIMARY KEY
-		if td.TableLevelPK != "" {
-			// Table-level PK with multiple columns
-			cols := strings.Split(td.TableLevelPK, ", ")
-			for _, col := range cols {
-				col = strings.TrimSpace(col)
-				implicit[tableKey+"."+col] = true
-			}
+		if td.TableLevelPK != "" && !strings.Contains(td.TableLevelPK, ",") {
+			implicit[tableKey+"."+strings.TrimSpace(td.TableLevelPK)] = true
 		}
 
 		// Check table-level UNIQUE constraints
 		for _, uniqueCols := range td.TableLevelUniques {
-			cols := strings.Split(uniqueCols, ", ")
-			for _, col := range cols {
-				col = strings.TrimSpace(col)
-				implicit[tableKey+"."+col] = true
+			if !strings.Contains(uniqueCols, ",") {
+				implicit[tableKey+"."+strings.TrimSpace(uniqueCols)] = true
 			}
 		}
 
@@ -875,7 +868,7 @@ func buildImplicitIndexMap(tables map[string]*model.TableDef) map[string]bool {
 func normalizeIndexDef(stmt string) string {
 	// Extract table name, columns, and options to create a unique key
 	// Format: table(col1,col2)[UNIQUE][WHERE...][INCLUDE...]
-	re := regexp.MustCompile(`(?i)^CREATE\s+(UNIQUE\s+)?INDEX\s+(?:\S+\s+)?ON\s+(` + identifierRE + `)\.(` + identifierRE + `)\s*\(([^)]+)\)`)
+	re := regexp.MustCompile(`(?i)^CREATE\s+(UNIQUE\s+)?INDEX\s+(?:\S+\s+)?ON\s+(?:(` + identifierRE + `)\.)?(` + identifierRE + `)\s*\(([^)]+)\)`)
 	m := re.FindStringSubmatch(stmt)
 	if m == nil {
 		return ""
@@ -890,7 +883,10 @@ func normalizeIndexDef(stmt string) string {
 	columnsStr = strings.ToLower(strings.ReplaceAll(columnsStr, " ", ""))
 
 	// Build key: table(col)[UNIQUE][WHERE...][INCLUDE...]
-	key := tableSchema + "." + tableName + "(" + columnsStr + ")"
+	key := tableName + "(" + columnsStr + ")"
+	if tableSchema != "" {
+		key = tableSchema + "." + key
+	}
 	if isUnique {
 		key = "UNIQUE " + key
 	}
@@ -932,7 +928,7 @@ func isRedundantOrDuplicateIndex(stmt string, implicitIndexes map[string]bool, s
 func isRedundantIndex(stmt string, implicitIndexes map[string]bool) bool {
 	// Parse CREATE INDEX statement
 	// Format: CREATE [UNIQUE] INDEX idx_name ON table(col [, col...]) [WHERE...] [INCLUDE...]
-	re := regexp.MustCompile(`(?i)^CREATE\s+(UNIQUE\s+)?INDEX\s+(?:\S+\s+)?ON\s+(` + identifierRE + `)\.(` + identifierRE + `)\s*\(([^)]+)\)`)
+	re := regexp.MustCompile(`(?i)^CREATE\s+(UNIQUE\s+)?INDEX\s+(?:\S+\s+)?ON\s+(?:(` + identifierRE + `)\.)?(` + identifierRE + `)\s*\(([^)]+)\)`)
 	m := re.FindStringSubmatch(stmt)
 	if m == nil {
 		return false
@@ -944,7 +940,10 @@ func isRedundantIndex(stmt string, implicitIndexes map[string]bool) bool {
 	columnsStr := m[4]
 
 	// Build table key
-	tableKey := tableSchema + "." + tableName
+	tableKey := tableName
+	if tableSchema != "" {
+		tableKey = tableSchema + "." + tableName
+	}
 
 	// Check if this is an expression index (contains parentheses in column list)
 	// Expression indexes are NOT redundant
