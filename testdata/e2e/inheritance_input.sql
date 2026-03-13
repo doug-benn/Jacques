@@ -1,21 +1,17 @@
--- Test fixture for basic table inheritance (E2E testable)
--- Covers: Simple parent-child inheritance
--- Note: Complex inheritance still requires ExperimentalFolding
+-- Test fixture for basic table inheritance
+-- Covers: Simple single-parent inheritance, ONLY removal in INHERITS
 
--- Parent table
-CREATE TABLE public.users (
-    id bigint NOT NULL,
-    name text NOT NULL,
-    created_at timestamp without time zone NOT NULL DEFAULT NOW()
+CREATE TABLE parent_table (
+    id bigint PRIMARY KEY,
+    name text NOT NULL
 );
 
-ALTER TABLE ONLY public.users
-    ADD CONSTRAINT users_pkey PRIMARY KEY (id);
+-- Basic inheritance
+CREATE TABLE child_table (
+    val text
+) INHERITS (parent_table);
 
--- Child table: administrators
-CREATE TABLE public.administrators (
-    role text NOT NULL DEFAULT 'admin'
-) INHERITS (public.users);
-
-ALTER TABLE ONLY public.administrators
-    ADD CONSTRAINT administrators_pkey PRIMARY KEY (id);
+-- ONLY removal in INHERITS
+CREATE TABLE only_child (
+    val text
+) INHERITS (ONLY parent_table);

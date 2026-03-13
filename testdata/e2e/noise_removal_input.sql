@@ -25,11 +25,6 @@ COMMENT ON TABLE noise_test IS 'A noisy table';
 -- ONLY removal from pass-throughs
 ALTER TABLE ONLY noise_test ADD COLUMN new_col int;
 
--- ONLY removal from INHERITS
-CREATE TABLE child_table (
-    val text
-) INHERITS (ONLY noise_test);
-
 -- Administrative commands inside function body
 CREATE FUNCTION func_with_admin() RETURNS void AS $$
 BEGIN

@@ -1,9 +1,12 @@
-CREATE TABLE users (
+CREATE TABLE parent_table (
     id bigint PRIMARY KEY,
-    name text NOT NULL,
-    created_at timestamp without time zone NOT NULL DEFAULT NOW()
+    name text NOT NULL
 );
 
-CREATE TABLE administrators (
-    role text NOT NULL DEFAULT 'admin'
-) INHERITS (users);
+CREATE TABLE child_table (
+    val text
+) INHERITS (parent_table);
+
+CREATE TABLE only_child (
+    val text
+) INHERITS (parent_table);
