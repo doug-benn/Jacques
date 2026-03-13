@@ -1,21 +1,20 @@
-CREATE TABLE users (
-    id bigint NOT NULL,
-    email text NOT NULL
+CREATE TABLE drop_test (
+    id BIGSERIAL PRIMARY KEY,
+    val text
 );
 
-CREATE TABLE orders (
-    id bigint NOT NULL,
-    user_id bigint NOT NULL
-);
+DROP TABLE IF EXISTS drop_test;
 
-DROP TABLE IF EXISTS users;
+DROP INDEX IF EXISTS idx_drop_val;
 
-DROP TABLE IF EXISTS orders;
+DROP SEQUENCE IF EXISTS drop_seq;
 
-DROP INDEX IF EXISTS idx_users_email;
+DROP VIEW IF EXISTS drop_view;
 
-DROP INDEX IF EXISTS idx_orders_user;
+DROP MATERIALIZED VIEW IF EXISTS drop_mat_view;
 
-CREATE INDEX idx_users_email ON users(email);
+CREATE INDEX idx_drop_val ON drop_test(val);
 
-CREATE INDEX idx_orders_user ON orders(user_id);
+CREATE VIEW drop_view AS SELECT id FROM drop_test;
+
+CREATE MATERIALIZED VIEW drop_mat_view AS SELECT id FROM drop_test;

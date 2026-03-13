@@ -1,21 +1,18 @@
--- Test fixture for DROP statements with IF EXISTS (E2E testable)
--- DROP statements work with E2E because both DROP and DROP IF EXISTS
--- produce the same final schema on an empty database
+-- Test fixture for DROP statements
+-- Covers: Adding IF EXISTS to various DROP statements, and schema stripping
 
-DROP TABLE public.users;
-DROP TABLE public.orders;
-DROP INDEX idx_users_email;
-DROP INDEX idx_orders_user;
+DROP TABLE public.drop_test;
+DROP INDEX idx_drop_val;
+DROP SEQUENCE drop_seq;
+DROP VIEW drop_view;
+DROP MATERIALIZED VIEW drop_mat_view;
 
-CREATE TABLE public.users (
-    id bigint NOT NULL,
-    email text NOT NULL
+-- Objects to exist so they can be referenced/dropped in the E2E test
+CREATE SEQUENCE drop_seq;
+CREATE TABLE public.drop_test (
+    id bigint PRIMARY KEY DEFAULT nextval('drop_seq'),
+    val text
 );
-
-CREATE TABLE public.orders (
-    id bigint NOT NULL,
-    user_id bigint NOT NULL
-);
-
-CREATE INDEX idx_users_email ON public.users(email);
-CREATE INDEX idx_orders_user ON public.orders(user_id);
+CREATE INDEX idx_drop_val ON public.drop_test(val);
+CREATE VIEW drop_view AS SELECT id FROM public.drop_test;
+CREATE MATERIALIZED VIEW drop_mat_view AS SELECT id FROM public.drop_test;
