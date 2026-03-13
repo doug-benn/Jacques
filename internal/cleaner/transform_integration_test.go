@@ -9,37 +9,6 @@ import (
 	"github.com/doug-benn/Jacques/internal/model"
 )
 
-func TestIntegration_RemoveOnlyKeyword(t *testing.T) {
-	tests := []struct {
-		name  string
-		input string
-		want  string
-	}{
-		{
-			name:  "ONLY keyword removed",
-			input: "ALTER TABLE ONLY x ADD y;",
-			want:  "ALTER TABLE x ADD y;",
-		},
-		{
-			name:  "no ONLY keyword",
-			input: "ALTER TABLE x ADD y;",
-			want:  "ALTER TABLE x ADD y;",
-		},
-		{
-			name:  "empty string",
-			input: "",
-			want:  "",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := removeOnlyKeyword(tt.input)
-			assert.Equal(t, tt.want, result)
-		})
-	}
-}
-
 func TestIntegration_RemoveNotNullAfterPrimaryKey(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -138,13 +107,6 @@ func TestIntegration_Transform(t *testing.T) {
 		input string
 		check func(*testing.T, string)
 	}{
-		{
-			name:  "ONLY keyword removal",
-			input: "ALTER TABLE ONLY public.users ADD CONSTRAINT pk PRIMARY KEY (id);",
-			check: func(t *testing.T, result string) {
-				assert.NotContains(t, result, "ONLY")
-			},
-		},
 		{
 			name:  "NOT NULL after PRIMARY KEY removal",
 			input: "ALTER TABLE ONLY public.users ADD CONSTRAINT pk PRIMARY KEY (id);",

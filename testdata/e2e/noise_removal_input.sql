@@ -5,6 +5,7 @@
 --   - COMMENT statements removed
 --   - OWNER TO statements removed
 --   - psql metacommands removed
+--   - ONLY keyword removed
 --
 -- Edge cases:
 --   - Administrative commands inside function body (MUST be preserved)
@@ -17,9 +18,17 @@ CREATE TABLE noise_test (
     id bigint
 );
 
-ALTER TABLE noise_test OWNER TO testuser;
+ALTER TABLE ONLY noise_test OWNER TO testuser;
 GRANT ALL ON TABLE noise_test TO testuser;
 COMMENT ON TABLE noise_test IS 'A noisy table';
+
+-- ONLY removal from pass-throughs
+ALTER TABLE ONLY noise_test ADD COLUMN new_col int;
+
+-- ONLY removal from INHERITS
+CREATE TABLE child_table (
+    val text
+) INHERITS (ONLY noise_test);
 
 -- Administrative commands inside function body
 CREATE FUNCTION func_with_admin() RETURNS void AS $$
@@ -32,10 +41,11 @@ $$ LANGUAGE plpgsql;
 
 -- Administrative commands in string literal
 CREATE TABLE string_noise (
-    val text DEFAULT 'SET statement_timeout = 0;'
+    val text DEFAULT 'SET statement_timeout = 0; ONLY should stay here'
 );
 
 -- Administrative commands in quoted identifiers (highly unlikely but possible)
 CREATE TABLE "OWNER TO testuser" (
-    "GRANT ALL" bigint
+    "GRANT ALL" bigint,
+    "ONLY" text
 );

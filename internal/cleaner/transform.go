@@ -17,7 +17,6 @@ var partitionByRE = regexp.MustCompile(`(?i)\s+PARTITION\s+BY\s+\w+\s*\([^)]+\)`
 var partitionOfRE = regexp.MustCompile(`(?i)^CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:(` + identifierRE + `)\.)?(` + identifierRE + `)\s+PARTITION\s+OF\s+`)
 var colDefRE = regexp.MustCompile(`^\s*(` + identifierRE + `)\s+(.+)$`)
 var nextvalRE = regexp.MustCompile(`nextval\('([^']+)'`)
-var onlyKeywordRE = regexp.MustCompile(`(?i)\bONLY\b\s*`)
 var primaryKeyNotNullRE = regexp.MustCompile(`(?i)\bPRIMARY\s+KEY\s*\([^)]+\)\s*NOT\s+NULL\b`)
 var fkRefRE = regexp.MustCompile(`REFERENCES\s+(` + identifierRE + `)\s*(?:\(([^)]+)\))?(\s+ON\s+DELETE\s+(NO\s+ACTION|RESTRICT|CASCADE|SET\s+NULL|SET\s+DEFAULT))?(\s+ON\s+UPDATE\s+(NO\s+ACTION|RESTRICT|CASCADE|SET\s+NULL|SET\s+DEFAULT))?(\s+MATCH\s+(FULL|PARTIAL))?`)
 var whitespaceRE = regexp.MustCompile(`\s+`)
@@ -406,8 +405,7 @@ func renderColumn(col *model.ColumnDef) string {
 }
 
 func Transform(sql string) string {
-	result := removeOnlyKeyword(sql)
-	result = removeNotNullAfterPrimaryKey(result)
+	result := removeNotNullAfterPrimaryKey(sql)
 	return result
 }
 
@@ -528,10 +526,6 @@ func renderReferences(col *model.ColumnDef) string {
 // It returns true if there are more items to come.
 func needsTrailingComma(currentIndex, totalCount int, hasMoreAfter bool) bool {
 	return currentIndex < totalCount-1 || hasMoreAfter
-}
-
-func removeOnlyKeyword(sql string) string {
-	return onlyKeywordRE.ReplaceAllString(sql, "")
 }
 
 func removeNotNullAfterPrimaryKey(sql string) string {
