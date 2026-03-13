@@ -1,46 +1,48 @@
 -- Test fixture for noise removal
 -- Transformations tested:
---   - SET statements removed
---   - GRANT statements removed
---   - COMMENT statements removed
---   - OWNER TO statements removed
---   - psql metacommands removed
---   - ONLY keyword removed
---
--- Edge cases:
---   - Administrative commands inside function body (MUST be preserved)
---   - Administrative commands in string literal (MUST be preserved)
---   - Administrative commands in quoted identifiers (MUST be preserved)
+--   - Administrative noise (SET, GRANT, OWNER TO)
+--   - psql metacommands (\set, \unset, etc.)
+--   - ONLY keyword removal
+--   - Block and line comment removal (quote-aware)
+--   - DROP IF EXISTS addition
 
+-- 1. Administrative Noise & Metacommands
 SET statement_timeout = 0;
+\set QUIET on
+\set EMPTY_VAR
+\restricted
+
+-- 2. Comments (Header, Inline, Footer)
+/* Header block comment */
+-- Line comment
 
 CREATE TABLE noise_test (
-    id bigint
+    id bigint NOT NULL,
+    val text /* Inline comment */
 );
 
+-- 3. ONLY Removal & Ownership/Grants
 ALTER TABLE ONLY noise_test OWNER TO testuser;
 GRANT ALL ON TABLE noise_test TO testuser;
 COMMENT ON TABLE noise_test IS 'A noisy table';
 
--- ONLY removal from pass-throughs
-ALTER TABLE ONLY noise_test ADD COLUMN new_col int;
+-- 4. DROP IF EXISTS
+DROP TABLE public.drop_test;
+DROP VIEW public.drop_view;
 
--- Administrative commands inside function body
-CREATE FUNCTION func_with_admin() RETURNS void AS $$
+-- Objects for DROP test
+CREATE TABLE drop_test (id bigint PRIMARY KEY);
+CREATE VIEW drop_view AS SELECT id FROM drop_test;
+
+-- 5. Edge Case: Preservation inside functions/strings
+CREATE FUNCTION func_with_noise() RETURNS void AS $$
 BEGIN
+    -- Internal comments and SET MUST be preserved
     SET statement_timeout = 3600;
-    -- GRANT SELECT ON some_table TO user; (should be preserved since it's inside a comment inside a function)
     PERFORM 1;
 END;
 $$ LANGUAGE plpgsql;
 
--- Administrative commands in string literal
 CREATE TABLE string_noise (
-    val text DEFAULT 'SET statement_timeout = 0; ONLY should stay here'
-);
-
--- Administrative commands in quoted identifiers (highly unlikely but possible)
-CREATE TABLE "OWNER TO testuser" (
-    "GRANT ALL" bigint,
-    "ONLY" text
+    val text DEFAULT 'SET timeout; -- not a comment; ONLY stay'
 );

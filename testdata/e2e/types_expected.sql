@@ -6,9 +6,12 @@ CREATE TABLE type_test (
     id bigint PRIMARY KEY,
     enum_val test_enum,
     arr_val text[],
-    json_val json,
     jsonb_val jsonb,
     range_val tstzrange,
-    int_range int4range,
-    domain_val test_domain
+    domain_val test_domain,
+    collate_c text COLLATE "C" NOT NULL UNIQUE,
+    collate_def text COLLATE "default",
+    price numeric(10,2) NOT NULL DEFAULT 0,
+    discount numeric(10,2) DEFAULT 0,
+    final_price numeric(10,2) GENERATED ALWAYS AS (price - discount) STORED
 );

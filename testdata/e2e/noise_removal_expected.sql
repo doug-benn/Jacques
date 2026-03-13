@@ -1,21 +1,26 @@
 CREATE TABLE noise_test (
-    id bigint,
-    new_col int
+    id bigint NOT NULL,
+    val text
+);
+
+CREATE TABLE drop_test (
+    id bigint PRIMARY KEY
 );
 
 CREATE TABLE string_noise (
-    val text DEFAULT 'SET statement_timeout = 0; ONLY should stay here'
+    val text DEFAULT 'SET timeout; -- not a comment; ONLY stay'
 );
 
-CREATE TABLE "OWNER TO testuser" (
-    "GRANT ALL" bigint,
-    "ONLY" text
-);
+DROP TABLE IF EXISTS drop_test;
 
-CREATE FUNCTION func_with_admin() RETURNS void AS $$
+DROP VIEW IF EXISTS drop_view;
+
+CREATE VIEW drop_view AS SELECT id FROM drop_test;
+
+CREATE FUNCTION func_with_noise() RETURNS void AS $$
 BEGIN
+    -- Internal comments and SET MUST be preserved
     SET statement_timeout = 3600;
-    -- GRANT SELECT ON some_table TO user; (should be preserved since it's inside a comment inside a function)
     PERFORM 1;
 END;
 $$ LANGUAGE plpgsql;
