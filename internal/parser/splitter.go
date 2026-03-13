@@ -27,6 +27,14 @@ func SkipBlockComment(sql string, i int) (string, int) {
 	return sql[i : i+end+4], i + end + 4
 }
 
+func ExtractDollarTag(sql string, i int) string {
+	if i >= len(sql) || sql[i] != '$' {
+		return ""
+	}
+	m := regexp.MustCompile(`^\$([A-Za-z_][A-Za-z_0-9]*)?\$`).FindString(sql[i:])
+	return m
+}
+
 func FindDollarQuoteEnd(sql string, i int) (int, string) {
 	if i >= len(sql) || sql[i] != '$' {
 		return -1, ""
