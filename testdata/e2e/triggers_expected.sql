@@ -1,11 +1,14 @@
-CREATE TABLE users (
+CREATE TABLE trigger_test (
     id bigint PRIMARY KEY,
-    email text NOT NULL,
-    name text NOT NULL,
+    val text,
     updated_at timestamp without time zone
 );
 
-CREATE OR REPLACE FUNCTION update_updated_at()
+CREATE TABLE log_table (
+    msg text
+);
+
+CREATE OR REPLACE FUNCTION update_timestamp()
 RETURNS TRIGGER AS $$
 BEGIN
     NEW.updated_at = NOW();
@@ -13,7 +16,20 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE TRIGGER update_users_timestamp
-    BEFORE UPDATE ON users
+CREATE TRIGGER trg_before_update
+    BEFORE UPDATE ON trigger_test
     FOR EACH ROW
-    EXECUTE FUNCTION update_updated_at();
+    EXECUTE FUNCTION update_timestamp();
+
+CREATE OR REPLACE FUNCTION log_insert()
+RETURNS TRIGGER AS $$
+BEGIN
+    INSERT INTO log_table(msg) VALUES ('inserted ' || NEW.id);
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_after_insert
+    AFTER INSERT ON trigger_test
+    FOR EACH ROW
+    EXECUTE FUNCTION log_insert();
