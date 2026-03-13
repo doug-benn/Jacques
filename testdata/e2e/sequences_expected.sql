@@ -1,56 +1,32 @@
-CREATE SEQUENCE global_id_seq START WITH 1 INCREMENT BY 1 NO MAXVALUE CACHE 1;
+CREATE SEQUENCE shared_seq START WITH 1 INCREMENT BY 1 NO MAXVALUE CACHE 1;
 
-CREATE SEQUENCE tags_id_seq
-    START WITH 1 INCREMENT BY 1 NO MINVALUE NO MAXVALUE CACHE 1;
+CREATE SEQUENCE cached_seq CACHE 100;
 
-CREATE TABLE orders (
-    id bigint PRIMARY KEY DEFAULT nextval('global_id_seq'::regclass),
-    user_id bigint NOT NULL,
-    total numeric(10,2) NOT NULL DEFAULT 0,
-    created_at timestamp without time zone NOT NULL DEFAULT NOW()
+CREATE TABLE shared_table_1 (
+    id bigint NOT NULL DEFAULT nextval('shared_seq'::regclass),
+    PRIMARY KEY (id)
 );
 
-CREATE TABLE order_items (
-    id bigint PRIMARY KEY DEFAULT nextval('global_id_seq'::regclass),
-    order_id bigint NOT NULL,
-    product_id bigint NOT NULL,
-    quantity integer NOT NULL DEFAULT 1
+CREATE TABLE shared_table_2 (
+    id bigint NOT NULL DEFAULT nextval('shared_seq'::regclass),
+    PRIMARY KEY (id)
 );
 
-CREATE TABLE products (
-    id bigint PRIMARY KEY DEFAULT nextval('global_id_seq'::regclass),
-    name text NOT NULL,
-    price numeric(10,2) NOT NULL
+CREATE TABLE serial_types (
+    id_big BIGSERIAL,
+    id_reg SERIAL,
+    id_small SMALLSERIAL,
+    PRIMARY KEY (id_big)
 );
 
-CREATE TABLE users (
-    id BIGSERIAL PRIMARY KEY,
-    email text NOT NULL UNIQUE,
-    created_at timestamp without time zone NOT NULL DEFAULT NOW()
-);
-
-CREATE TABLE accounts (
-    id SERIAL PRIMARY KEY,
-    name text NOT NULL
-);
-
-CREATE TABLE tags (
-    id SMALLSERIAL PRIMARY KEY,
-    name text NOT NULL
-);
-
-CREATE TABLE custom_seq_table (
-    id BIGSERIAL PRIMARY KEY
-);
-
-CREATE TABLE unowned_table (
-    id BIGSERIAL PRIMARY KEY
-);
-
-CREATE TABLE bounded_table (
-    id BIGSERIAL PRIMARY KEY
+CREATE TABLE edge_case_table (
+    id_start BIGSERIAL,
+    id_unowned BIGSERIAL,
+    id_bounded BIGSERIAL,
+    PRIMARY KEY (id_start)
 );
 
 CREATE TABLE cached_table (
-    id BIGSERIAL PRIMARY KEY
+    id bigint NOT NULL DEFAULT nextval('cached_seq'),
+    PRIMARY KEY (id)
 );

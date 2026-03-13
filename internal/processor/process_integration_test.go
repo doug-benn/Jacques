@@ -514,7 +514,7 @@ func TestIntegration_ApplySerialConversion(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			applySerialConversion(tt.tables, tt.tableOrder, tt.usageCount)
+			applySerialConversion(tt.tables, tt.tableOrder, tt.usageCount, nil)
 			for _, td := range tt.tables {
 				for _, col := range td.Columns {
 					if col.SequenceName != "" {
@@ -585,7 +585,7 @@ func TestIntegration_ExtractSequencesFromPassthroughs(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			kept, converted := extractSequencesFromPassthroughs(tt.passThroughs, tt.usageCount, tt.tables)
+			kept, converted, _ := extractSequencesFromPassthroughs(tt.passThroughs, tt.usageCount, tt.tables)
 			assert.Equal(t, tt.wantKept, len(kept), "kept sequences")
 			assert.Equal(t, tt.wantConverted, len(converted), "converted sequences")
 		})

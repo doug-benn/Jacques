@@ -1,6 +1,7 @@
 package processor
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 
@@ -48,6 +49,18 @@ var partitionOfRE = regexp.MustCompile(`(?i)^CREATE\s+TABLE\s+.*\s+PARTITION\s+O
 var blockCommentRE = regexp.MustCompile(`(?s)/\*.*?\*/`)
 var dropRE = regexp.MustCompile(`(?i)^DROP\s+(TABLE|INDEX|SEQUENCE|VIEW|MATERIALIZED\s+VIEW)\s+(IF\s+EXISTS\s+)?(\S+)`)
 var schemaRE = regexp.MustCompile(`(?i)^CREATE\s+SCHEMA\s+(?:IF\s+NOT\s+EXISTS\s+)?(` + identifierRE + `)`)
+var cacheRE = regexp.MustCompile(`(?i)\bCACHE\s+(\d+)\b`)
+
+func extractSequenceCache(stmt string) int {
+	m := cacheRE.FindStringSubmatch(stmt)
+	if m != nil {
+		var cache int
+		if _, err := fmt.Sscanf(m[1], "%d", &cache); err == nil {
+			return cache
+		}
+	}
+	return 1 // Default cache is 1
+}
 
 // detectStatementType determines the type of SQL statement.
 // It returns the StatementType based on the statement content and options.
@@ -130,11 +143,11 @@ func Process(sql string, opts *Options) string {
 	// Count sequence usage across tables
 	usageCount := countSequenceUsage(tables, tableOrder)
 
-	// Apply SERIAL conversion based on usage count
-	applySerialConversion(tables, tableOrder, usageCount)
+	// Extract sequences to keep from pass-throughs and identify non-convertible ones
+	keptSequences, convertedToSerial, nonConvertible := extractSequencesFromPassthroughs(passThroughs, usageCount, tables)
 
-	// Extract sequences to keep from pass-throughs
-	keptSequences, convertedToSerial := extractSequencesFromPassthroughs(passThroughs, usageCount, tables)
+	// Apply SERIAL conversion based on usage count and non-convertible status
+	applySerialConversion(tables, tableOrder, usageCount, nonConvertible)
 
 	// Build final output
 	return buildOutput(tables, keptSequences, typeStmts, passThroughs, fkPassthroughs, tableOrder, convertedToSerial, opts)
@@ -404,7 +417,7 @@ func countSequenceUsage(tables map[string]*model.TableDef, tableOrder []string) 
 //   - tables: map of table definitions
 //   - tableOrder: ordered slice of table keys
 //   - usageCount: map of normalized sequence name to usage count
-func applySerialConversion(tables map[string]*model.TableDef, tableOrder []string, usageCount map[string]int) {
+func applySerialConversion(tables map[string]*model.TableDef, tableOrder []string, usageCount map[string]int, nonConvertible map[string]bool) {
 	processedForSerial := make(map[*model.TableDef]bool)
 
 	for _, key := range tableOrder {
@@ -417,8 +430,8 @@ func applySerialConversion(tables map[string]*model.TableDef, tableOrder []strin
 		for _, col := range td.Columns {
 			if col.SequenceName != "" {
 				normalized := normalizeSequenceName(col.SequenceName)
-				// Only set SERIAL if count == 1 AND column type is bigint, integer, or smallint
-				if usageCount[normalized] == 1 {
+				// Only set SERIAL if count == 1 AND not in nonConvertible AND column type is bigint, integer, or smallint
+				if usageCount[normalized] == 1 && !nonConvertible[normalized] {
 					rawDefLower := strings.ToLower(col.RawDef)
 					if strings.Contains(rawDefLower, "bigint") && !strings.Contains(rawDefLower, "smallint") {
 						col.IsSerial = true
@@ -452,9 +465,10 @@ func applySerialConversion(tables map[string]*model.TableDef, tableOrder []strin
 // Returns:
 //   - keptSequences: slice of CREATE SEQUENCE statements to keep
 //   - convertedToSerial: map of normalized sequence names that were converted to SERIAL
-func extractSequencesFromPassthroughs(passThroughs []string, usageCount map[string]int, tables map[string]*model.TableDef) ([]string, map[string]bool) {
+func extractSequencesFromPassthroughs(passThroughs []string, usageCount map[string]int, tables map[string]*model.TableDef) ([]string, map[string]bool, map[string]bool) {
 	var keptSequences []string
 	convertedToSerial := make(map[string]bool)
+	nonConvertible := make(map[string]bool)
 
 	for _, stmt := range passThroughs {
 		stripped := strings.TrimSpace(stmt)
@@ -465,7 +479,11 @@ func extractSequencesFromPassthroughs(passThroughs []string, usageCount map[stri
 			keepSequence := false
 			usageCnt := usageCount[normalized]
 
-			if usageCnt == 0 {
+			// Check for CACHE > 1 - should never be converted
+			if cache := extractSequenceCache(stmt); cache > 1 {
+				nonConvertible[normalized] = true
+				keepSequence = true
+			} else if usageCnt == 0 {
 				keepSequence = true
 			} else if usageCnt >= 2 {
 				keepSequence = true
@@ -475,7 +493,8 @@ func extractSequencesFromPassthroughs(passThroughs []string, usageCount map[stri
 					for _, col := range td.Columns {
 						if normalizeSequenceName(col.SequenceName) == normalized {
 							rawDefLower := strings.ToLower(col.RawDef)
-							canConvertToSerial := (strings.Contains(rawDefLower, "bigint") && !strings.Contains(rawDefLower, "smallint")) ||
+							canConvertToSerial := strings.Contains(rawDefLower, "bigint") ||
+								strings.Contains(rawDefLower, "smallint") ||
 								strings.Contains(rawDefLower, "integer") ||
 								strings.EqualFold(strings.TrimSpace(col.RawDef), "int")
 							if !canConvertToSerial {
@@ -495,7 +514,7 @@ func extractSequencesFromPassthroughs(passThroughs []string, usageCount map[stri
 		}
 	}
 
-	return keptSequences, convertedToSerial
+	return keptSequences, convertedToSerial, nonConvertible
 }
 
 // buildOutput assembles the final output string from categorized components.
@@ -754,6 +773,9 @@ func preprocessSQL(sql string) string {
 			// Skip until newline
 			i += 2
 			for i < n && sql[i] != '\n' {
+				i++
+			}
+			if i < n && sql[i] == '\n' {
 				i++
 			}
 			continue
