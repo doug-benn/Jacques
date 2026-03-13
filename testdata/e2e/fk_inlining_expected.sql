@@ -1,29 +1,25 @@
 CREATE TABLE fk_parent (
-    id bigint NOT NULL,
-    PRIMARY KEY (id)
+    id bigint PRIMARY KEY
 );
 
 CREATE TABLE fk_actions (
-    id bigint NOT NULL,
+    id bigint PRIMARY KEY,
     col_cascade bigint REFERENCES fk_parent(id) ON DELETE CASCADE NOT NULL,
     col_setnull bigint REFERENCES fk_parent(id) ON DELETE SET NULL,
     col_setdef bigint DEFAULT 1 REFERENCES fk_parent(id) ON DELETE SET DEFAULT,
     col_restrict bigint REFERENCES fk_parent(id) ON DELETE RESTRICT NOT NULL,
-    col_upd_cascade bigint REFERENCES fk_parent(id) ON UPDATE CASCADE NOT NULL,
-    PRIMARY KEY (id)
+    col_upd_cascade bigint REFERENCES fk_parent(id) ON UPDATE CASCADE NOT NULL
 );
 
 CREATE TABLE fk_circular_a (
-    id bigint NOT NULL,
+    id bigint PRIMARY KEY,
     parent_id bigint REFERENCES fk_circular_a(id),
-    other_id bigint REFERENCES fk_circular_b(id),
-    PRIMARY KEY (id)
+    other_id bigint REFERENCES fk_circular_b(id)
 );
 
 CREATE TABLE fk_circular_b (
-    id bigint NOT NULL,
-    other_id bigint REFERENCES fk_circular_a(id),
-    PRIMARY KEY (id)
+    id bigint PRIMARY KEY,
+    other_id bigint REFERENCES fk_circular_a(id)
 );
 
 CREATE TABLE fk_complex (

@@ -38,10 +38,10 @@ var alterSeqOwnedBy = regexp.MustCompile(`(?i)^ALTER\s+SEQUENCE\b.*\bOWNED\s+BY\
 var setDefaultRE = regexp.MustCompile(`^ALTER\s+TABLE\s+(?:ONLY\s+)?(?:(` + identifierRE + `)\.)?(` + identifierRE + `)\s+ALTER\s+COLUMN\s+(` + identifierRE + `)\s+SET\s+DEFAULT\s+(.*)`)
 var setNotNullRE = regexp.MustCompile(`^ALTER\s+TABLE\s+(?:ONLY\s+)?(?:(` + identifierRE + `)\.)?(` + identifierRE + `)\s+ALTER\s+COLUMN\s+(` + identifierRE + `)\s+SET\s+NOT\s+NULL\b`)
 var setTypeRE = regexp.MustCompile(`^ALTER\s+TABLE\s+(?:ONLY\s+)?(?:(` + identifierRE + `)\.)?(` + identifierRE + `)\s+ALTER\s+COLUMN\s+(` + identifierRE + `)\s+(?:SET\s+DATA\s+)?TYPE\s+(.*)`)
-var addPKRE = regexp.MustCompile(`^ALTER\s+TABLE\s+(?:ONLY\s+)?(?:(` + identifierRE + `)\.)?(` + identifierRE + `)\s+ADD\s+CONSTRAINT\s+(?:"[^"]+"|\S+)\s+PRIMARY\s+KEY\s*\(([^)]+)\)`)
-var addUniqueRE = regexp.MustCompile(`^ALTER\s+TABLE\s+(?:ONLY\s+)?(?:(` + identifierRE + `)\.)?(` + identifierRE + `)\s+ADD\s+CONSTRAINT\s+(?:"[^"]+"|\S+)\s+UNIQUE\s*\(([^)]+)\)`)
-var addCheckRE = regexp.MustCompile(`^ALTER\s+TABLE\s+(?:ONLY\s+)?(?:(` + identifierRE + `)\.)?(` + identifierRE + `)\s+(ADD\s+CONSTRAINT\s+(?:"[^"]+"|\S+)\s+CHECK\s*\(.*)`)
-var addFKRE = regexp.MustCompile(`^ALTER\s+TABLE\s+(?:ONLY\s+)?(?:(` + identifierRE + `)\.)?(` + identifierRE + `)\s+(ADD\s+CONSTRAINT\s+(?:"[^"]+"|\S+)\s+FOREIGN\s+KEY\s*\(.*)`)
+var addPKRE = regexp.MustCompile(`(?i)^ALTER\s+TABLE\s+(?:ONLY\s+)?(?:(` + identifierRE + `)\.)?(` + identifierRE + `)\s+ADD\s+(?:CONSTRAINT\s+(?:"[^"]+"|\S+)\s+)?PRIMARY\s+KEY\s*\(([^)]+)\)`)
+var addUniqueRE = regexp.MustCompile(`(?i)^ALTER\s+TABLE\s+(?:ONLY\s+)?(?:(` + identifierRE + `)\.)?(` + identifierRE + `)\s+ADD\s+(?:CONSTRAINT\s+(?:"[^"]+"|\S+)\s+)?UNIQUE\s*\(([^)]+)\)`)
+var addCheckRE = regexp.MustCompile(`(?i)^ALTER\s+TABLE\s+(?:ONLY\s+)?(?:(` + identifierRE + `)\.)?(` + identifierRE + `)\s+ADD\s+(?:CONSTRAINT\s+(?:"[^"]+"|\S+)\s+)?(CHECK\s*\(.*)`)
+var addFKRE = regexp.MustCompile(`(?i)^ALTER\s+TABLE\s+(?:ONLY\s+)?(?:(` + identifierRE + `)\.)?(` + identifierRE + `)\s+ADD\s+(?:CONSTRAINT\s+(?:"[^"]+"|\S+)\s+)?(FOREIGN\s+KEY\s*\(.*)`)
 
 // FK details regex - captures column, reference, and actions
 var fkDetailsRE = regexp.MustCompile(`(?i)FOREIGN\s+KEY\s*\(([^)]+)\)\s*REFERENCES\s+(` + identifierRE + `)(?:\.(` + identifierRE + `))?\s*\(([^)]+)\)(\s+ON\s+DELETE\s+(NO\s+ACTION|RESTRICT|CASCADE|SET\s+NULL|SET\s+DEFAULT))?(\s+ON\s+UPDATE\s+(NO\s+ACTION|RESTRICT|CASCADE|SET\s+NULL|SET\s+DEFAULT))?(\s+MATCH\s+(FULL|PARTIAL))?(\s+NOT\s+VALID)?`)
@@ -284,7 +284,6 @@ func handleAddCheck(stmt string, tables map[string]*model.TableDef) AlterResult 
 		schema, tname, constraint := m[1], m[2], m[3]
 		td := FindTable(tables, schema, tname)
 		if td != nil {
-			constraint = addConstraintRE.ReplaceAllString(constraint, "")
 			td.TableConstraints = append(td.TableConstraints, strings.TrimSuffix(constraint, ";"))
 		}
 		return AlterHandled

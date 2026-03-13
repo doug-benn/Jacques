@@ -2,16 +2,13 @@ CREATE SCHEMA app;
 
 CREATE SCHEMA "MySchema";
 
-CREATE TABLE countries (
-    id bigint PRIMARY KEY,
-    code text NOT NULL,
-    name text NOT NULL
+CREATE TABLE base_table (
+    id bigint PRIMARY KEY
 );
 
-CREATE TABLE app.users (
+CREATE TABLE app.app_table (
     id bigint PRIMARY KEY,
-    email text NOT NULL,
-    country_id bigint REFERENCES countries(id)
+    base_id bigint REFERENCES base_table(id)
 );
 
 CREATE TABLE "MySchema".profile (

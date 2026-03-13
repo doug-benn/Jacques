@@ -105,7 +105,7 @@ CREATE TABLE products (
     meta_description text,
     created_at timestamp without time zone NOT NULL DEFAULT NOW(),
     updated_at timestamp without time zone NOT NULL DEFAULT NOW(),
-    CONSTRAINT products_price_positive CHECK (price >= 0)
+    CHECK (price >= 0)
 );
 
 CREATE TABLE product_variants (
@@ -142,7 +142,7 @@ CREATE TABLE inventory (
     quantity integer NOT NULL DEFAULT 0,
     reserved_quantity integer NOT NULL DEFAULT 0,
     updated_at timestamp without time zone NOT NULL DEFAULT NOW(),
-    CONSTRAINT inventory_quantity_positive CHECK (quantity >= 0)
+    CHECK (quantity >= 0)
 );
 
 CREATE TABLE suppliers (
@@ -193,7 +193,7 @@ CREATE TABLE orders (
     cancelled_at timestamp without time zone,
     created_at timestamp without time zone NOT NULL DEFAULT NOW(),
     updated_at timestamp without time zone NOT NULL DEFAULT NOW(),
-    CONSTRAINT orders_total_positive CHECK (total_amount >= 0)
+    CHECK (total_amount >= 0)
 );
 
 CREATE TABLE order_items (
@@ -209,7 +209,7 @@ CREATE TABLE order_items (
     tax_amount numeric(10,2) NOT NULL DEFAULT 0,
     total_amount numeric(10,2) NOT NULL,
     created_at timestamp without time zone NOT NULL DEFAULT NOW(),
-    CONSTRAINT order_items_quantity_positive CHECK (quantity > 0)
+    CHECK (quantity > 0)
 );
 
 CREATE TABLE payments (

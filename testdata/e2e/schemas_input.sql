@@ -1,34 +1,26 @@
--- Test fixture for multiple schemas
--- Covers: CREATE SCHEMA, schema-qualified names, cross-schema FKs
+-- Test fixture for schema handling
+-- Covers: CREATE SCHEMA preservation, ordering, inference, and public stripping
 
+-- Explicit schema
 CREATE SCHEMA app;
 
-CREATE TABLE public.countries (
-    id bigint NOT NULL,
-    code text NOT NULL,
-    name text NOT NULL
+-- Table in public schema (public should be stripped)
+CREATE TABLE public.base_table (
+    id bigint NOT NULL
 );
+ALTER TABLE ONLY public.base_table ADD PRIMARY KEY (id);
 
-ALTER TABLE ONLY public.countries
-    ADD CONSTRAINT countries_pkey PRIMARY KEY (id);
-
-CREATE TABLE app.users (
+-- Table in explicit schema
+CREATE TABLE app.app_table (
     id bigint NOT NULL,
-    email text NOT NULL,
-    country_id bigint
+    base_id bigint
 );
+ALTER TABLE ONLY app.app_table ADD PRIMARY KEY (id);
+ALTER TABLE ONLY app.app_table ADD CONSTRAINT app_table_fkey FOREIGN KEY (base_id) REFERENCES public.base_table(id);
 
-ALTER TABLE ONLY app.users
-    ADD CONSTRAINT users_pkey PRIMARY KEY (id);
-
-ALTER TABLE ONLY app.users
-    ADD CONSTRAINT users_country_fkey FOREIGN KEY (country_id) REFERENCES public.countries(id);
-
--- Quoted schema that needs to be inferred
+-- Table in quoted schema (should be inferred)
 CREATE TABLE "MySchema".profile (
     id bigint NOT NULL,
     bio text
 );
-
-ALTER TABLE ONLY "MySchema".profile
-    ADD CONSTRAINT profile_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY "MySchema".profile ADD PRIMARY KEY (id);
