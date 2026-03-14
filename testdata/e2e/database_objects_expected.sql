@@ -86,6 +86,16 @@ CREATE TRIGGER trg_before_update
     BEFORE UPDATE ON base_table
     FOR EACH ROW EXECUTE FUNCTION update_timestamp();
 
+CREATE TRIGGER trg_before_insert
+    BEFORE INSERT ON base_table
+    FOR EACH ROW EXECUTE FUNCTION update_timestamp();
+
+CREATE TRIGGER trg_after_delete
+    AFTER DELETE ON base_table
+    FOR EACH ROW EXECUTE FUNCTION update_timestamp();
+
 ALTER TABLE base_table ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY select_all ON base_table FOR SELECT USING (true);
+
+CREATE POLICY insert_check ON base_table FOR INSERT WITH CHECK (id > 0);

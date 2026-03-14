@@ -140,14 +140,17 @@ func Process(sql string, opts *Options) string {
 	// Infer missing CREATE SCHEMA statements and append to typeStmts
 	typeStmts = append(typeStmts, inferMissingSchemas(tables, typeStmts)...)
 
-	// Count sequence usage across tables
-	usageCount := countSequenceUsage(tables, tableOrder)
+	// Extract sequences used in trigger functions
+	triggerSeqUsage := extractTriggerSequences(passThroughs)
+
+	// Count sequence usage across tables (including trigger-based usage)
+	usageCount := countSequenceUsage(tables, tableOrder, triggerSeqUsage)
 
 	// Extract sequences to keep from pass-throughs and identify non-convertible ones
 	keptSequences, convertedToSerial, nonConvertible := extractSequencesFromPassthroughs(passThroughs, usageCount, tables)
 
 	// Apply SERIAL conversion based on usage count and non-convertible status
-	applySerialConversion(tables, tableOrder, usageCount, nonConvertible)
+	applySerialConversion(tables, tableOrder, usageCount, nonConvertible, triggerSeqUsage)
 
 	// Build final output
 	return buildOutput(tables, keptSequences, typeStmts, passThroughs, fkPassthroughs, tableOrder, convertedToSerial, opts)
@@ -375,16 +378,106 @@ func normalizeSequenceName(name string) string {
 	return parts[len(parts)-1]
 }
 
+var (
+	triggerFunctionRE = regexp.MustCompile(`(?i)^CREATE\s+FUNCTION\s+(\S+).*RETURNS\s+trigger`)
+	nextvalRE         = regexp.MustCompile(`nextval\s*\(\s*'(?:[^']+)'(?:\s*::\s*regclass)?\s*\)`)
+	triggerTableRE    = regexp.MustCompile(`(?i)^CREATE\s+TRIGGER\s+\S+\s+(?:BEFORE|AFTER|INSTEAD\s+OF)\s+\S+\s+ON\s+(\S+)`)
+	triggerFuncRefRE  = regexp.MustCompile(`(?is)^CREATE\s+TRIGGER\s+\S+\s+(?:BEFORE|AFTER|INSTEAD\s+OF)\s+\S+\s+ON\s+\S+.*?EXECUTE\s+(?:FUNCTION|PROCEDURE)\s+(\S+)`)
+)
+
+// extractTriggerSequences extracts sequences used in trigger functions.
+// It parses CREATE FUNCTION statements with RETURNS trigger and CREATE TRIGGER statements
+// to build a mapping of sequences to the tables that use them via triggers.
+//
+// Parameters:
+//   - passThroughs: slice of pass-through statements (includes CREATE FUNCTION and CREATE TRIGGER)
+//
+// Returns:
+//   - map of normalized sequence name to set of table names that use it via triggers
+func extractTriggerSequences(passThroughs []string) map[string]map[string]bool {
+	seqToTables := make(map[string]map[string]bool)
+	funcToSeq := make(map[string]string) // function -> sequence mapping
+
+	for _, stmt := range passThroughs {
+		stripped := strings.TrimSpace(stmt)
+
+		if match := triggerFunctionRE.FindStringSubmatch(stripped); match != nil {
+			funcName := strings.Trim(match[1], "\"")
+			body := extractFunctionBody(stripped)
+			if body != "" {
+				nextvalMatches := nextvalRE.FindAllString(body, -1)
+				for _, nextvalCall := range nextvalMatches {
+					seqName := extractSequenceFromNextval(nextvalCall)
+					if seqName != "" {
+						seqName = normalizeSequenceName(seqName)
+						// Track which function uses which sequence
+						funcToSeq[funcName] = seqName
+
+						if seqToTables[seqName] == nil {
+							seqToTables[seqName] = make(map[string]bool)
+						}
+						// Don't add table yet - we don't know it until we see the TRIGGER
+					}
+				}
+			}
+		}
+
+		if match := triggerTableRE.FindStringSubmatch(stripped); match != nil {
+			tableName := strings.Trim(match[1], "\"")
+			triggerFuncMatch := triggerFuncRefRE.FindStringSubmatch(stripped)
+			if triggerFuncMatch != nil {
+				funcName := strings.Trim(strings.Trim(triggerFuncMatch[1], "\""), ";")
+				// Find which sequence this function uses
+				if seqName, ok := funcToSeq[funcName]; ok {
+					seqToTables[seqName][tableName] = true
+				}
+			}
+		}
+	}
+
+	// Clean up sequences with no tables
+	for seqName, tables := range seqToTables {
+		if len(tables) == 0 {
+			delete(seqToTables, seqName)
+		}
+	}
+
+	return seqToTables
+}
+
+func extractSequenceFromNextval(nextvalCall string) string {
+	re := regexp.MustCompile(`nextval\s*\(\s*'([^']+)'`)
+	match := re.FindStringSubmatch(nextvalCall)
+	if match != nil {
+		return match[1]
+	}
+	return ""
+}
+
+func extractFunctionBody(stmt string) string {
+	dollarMatch := regexp.MustCompile(`(?s)\$\$(.*?)\$\$`).FindStringSubmatch(stmt)
+	if dollarMatch != nil {
+		return dollarMatch[1]
+	}
+	dollarTagMatch := regexp.MustCompile(`(?s)\$(\w+)\$(.*?)\$\1\$`).FindStringSubmatch(stmt)
+	if dollarTagMatch != nil {
+		return dollarTagMatch[2]
+	}
+	return ""
+}
+
 // countSequenceUsage counts how many times each sequence is used across all tables.
 // It uses tableOrder to avoid double-counting duplicate table entries.
+// It also includes sequences used in trigger functions.
 //
 // Parameters:
 //   - tables: map of table definitions
 //   - tableOrder: ordered slice of table keys
+//   - triggerSeqUsage: map of sequence name to tables that use it via triggers
 //
 // Returns:
 //   - map of normalized sequence name to usage count
-func countSequenceUsage(tables map[string]*model.TableDef, tableOrder []string) map[string]int {
+func countSequenceUsage(tables map[string]*model.TableDef, tableOrder []string, triggerSeqUsage map[string]map[string]bool) map[string]int {
 	sequenceUsageCount := make(map[string]int)
 	countedTables := make(map[*model.TableDef]bool)
 
@@ -402,18 +495,25 @@ func countSequenceUsage(tables map[string]*model.TableDef, tableOrder []string) 
 		}
 	}
 
+	for seqName, tables := range triggerSeqUsage {
+		sequenceUsageCount[seqName] += len(tables)
+	}
+
 	return sequenceUsageCount
 }
 
 // applySerialConversion sets the IsSerial flag on columns based on sequence usage count.
 // A sequence is converted to SERIAL only if it's used by exactly one column
 // and the column type is compatible (bigint, integer, or smallint).
+// It also handles sequences used in triggers.
 //
 // Parameters:
 //   - tables: map of table definitions
 //   - tableOrder: ordered slice of table keys
 //   - usageCount: map of normalized sequence name to usage count
-func applySerialConversion(tables map[string]*model.TableDef, tableOrder []string, usageCount map[string]int, nonConvertible map[string]bool) {
+//   - nonConvertible: map of sequence names that cannot be converted to SERIAL
+//   - triggerSeqUsage: map of sequence names to tables that use them via triggers
+func applySerialConversion(tables map[string]*model.TableDef, tableOrder []string, usageCount map[string]int, nonConvertible map[string]bool, triggerSeqUsage map[string]map[string]bool) {
 	processedForSerial := make(map[*model.TableDef]bool)
 
 	for _, key := range tableOrder {
@@ -424,6 +524,7 @@ func applySerialConversion(tables map[string]*model.TableDef, tableOrder []strin
 		processedForSerial[td] = true
 
 		for _, col := range td.Columns {
+			// Check column-based sequence usage
 			if col.SequenceName != "" {
 				normalized := normalizeSequenceName(col.SequenceName)
 				// Only set SERIAL if count == 1 AND not in nonConvertible AND column type is bigint, integer, or smallint
@@ -441,6 +542,29 @@ func applySerialConversion(tables map[string]*model.TableDef, tableOrder []strin
 					}
 				} else {
 					col.IsSerial = false
+				}
+			} else {
+				// Check trigger-based sequence usage
+				// For columns without explicit SequenceName, check if there's a trigger-based sequence
+				// that should be converted to SERIAL
+				for _, tableNames := range triggerSeqUsage {
+					if len(tableNames) == 1 {
+						// Find which table uses this sequence
+						for tableName := range tableNames {
+							if tableName == td.Name || tableName == td.QualifiedName() {
+								// This column should use SERIAL
+								rawDefLower := strings.ToLower(col.RawDef)
+								if strings.Contains(rawDefLower, "bigint") && !strings.Contains(rawDefLower, "smallint") {
+									col.IsSerial = true
+								} else if strings.Contains(rawDefLower, "smallint") {
+									col.IsSerial = true
+								} else if strings.Contains(rawDefLower, "integer") ||
+									strings.EqualFold(strings.TrimSpace(col.RawDef), "int") {
+									col.IsSerial = true
+								}
+							}
+						}
+					}
 				}
 			}
 		}

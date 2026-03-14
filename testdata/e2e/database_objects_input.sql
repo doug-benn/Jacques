@@ -100,7 +100,17 @@ CREATE TRIGGER trg_before_update
     BEFORE UPDATE ON public.base_table
     FOR EACH ROW EXECUTE FUNCTION update_timestamp();
 
+-- Multiple triggers on same table
+CREATE TRIGGER trg_before_insert
+    BEFORE INSERT ON public.base_table
+    FOR EACH ROW EXECUTE FUNCTION update_timestamp();
+
+CREATE TRIGGER trg_after_delete
+    AFTER DELETE ON public.base_table
+    FOR EACH ROW EXECUTE FUNCTION update_timestamp();
+
 -- 5. RLS Policies
 ALTER TABLE public.base_table ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY select_all ON public.base_table FOR SELECT USING (true);
+CREATE POLICY insert_check ON public.base_table FOR INSERT WITH CHECK (id > 0);

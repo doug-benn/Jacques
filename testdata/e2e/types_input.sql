@@ -16,6 +16,12 @@ CREATE TABLE public.type_test (
     range_val tstzrange,
     domain_val public.test_domain,
     
+    -- Network types (UUID, inet, cidr, macaddr)
+    uuid_val uuid,
+    inet_val inet,
+    cidr_val cidr,
+    macaddr_val macaddr,
+    
     -- 2. Collation
     collate_c text COLLATE "C" NOT NULL,
     collate_def text COLLATE "default",

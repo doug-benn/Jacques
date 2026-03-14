@@ -33,3 +33,11 @@ CREATE TABLE public.products_electronics PARTITION OF public.products
 
 CREATE TABLE public.products_clothing PARTITION OF public.products
     FOR VALUES IN ('clothing', 'shoes', 'accessories');
+
+-- Partition by HASH
+CREATE TABLE public.users (
+    id bigint NOT NULL,
+    name text NOT NULL
+) PARTITION BY HASH (id);
+
+CREATE TABLE public.users_1 PARTITION OF public.users FOR VALUES WITH (MODULUS 4, REMAINDER 0);

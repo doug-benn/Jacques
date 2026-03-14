@@ -76,3 +76,57 @@ CREATE TABLE cycle_table (
 );
 
 ALTER SEQUENCE cycle_seq INCREMENT BY 2;
+
+-- ============================================
+-- 5. Sequences used in triggers
+-- ============================================
+-- Case A: Single table via trigger - should convert to SERIAL
+CREATE TABLE trigger_seq_single (
+    id bigint NOT NULL PRIMARY KEY
+);
+CREATE SEQUENCE trigger_seq_single_id_seq OWNED BY trigger_seq_single.id;
+
+CREATE FUNCTION set_trigger_single_id() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    NEW.id := nextval('trigger_seq_single_id_seq'::regclass);
+    RETURN NEW;
+END
+$$;
+
+CREATE TRIGGER trg_single
+    BEFORE INSERT ON trigger_seq_single
+    FOR EACH ROW
+    EXECUTE FUNCTION set_trigger_single_id();
+
+-- Case B: Multiple tables via triggers - should keep standalone
+CREATE TABLE trigger_table_a (
+    id bigint NOT NULL PRIMARY KEY
+);
+CREATE TABLE trigger_table_b (
+    id bigint NOT NULL PRIMARY KEY
+);
+CREATE SEQUENCE shared_trigger_seq OWNED BY trigger_table_a.id;
+
+CREATE FUNCTION set_shared_id_a() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    NEW.id := nextval('shared_trigger_seq'::regclass);
+    RETURN NEW;
+END
+$$;
+
+CREATE FUNCTION set_shared_id_b() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    NEW.id := nextval('shared_trigger_seq'::regclass);
+    RETURN NEW;
+END
+$$;
+
+CREATE TRIGGER trg_a
+    BEFORE INSERT ON trigger_table_a
+    FOR EACH ROW
+    EXECUTE FUNCTION set_shared_id_a();
+
+CREATE TRIGGER trg_b
+    BEFORE INSERT ON trigger_table_b
+    FOR EACH ROW
+    EXECUTE FUNCTION set_shared_id_b();

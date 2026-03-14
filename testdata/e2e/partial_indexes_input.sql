@@ -32,3 +32,12 @@ CREATE INDEX idx_duplicate ON index_test((lower(val)));
 -- 6. Non-redundant UNIQUE index with different properties (should stay)
 -- Even though 'val' is UNIQUE, this one has INCLUDE, making it distinct.
 CREATE UNIQUE INDEX idx_val_include ON index_test(val) INCLUDE (status);
+
+-- 7. Index with DESC
+CREATE INDEX idx_desc ON index_test(val DESC);
+
+-- 8. Index with NULLS FIRST
+CREATE INDEX idx_nulls_first ON index_test(val NULLS FIRST);
+
+-- 9. Index with COLLATE
+CREATE INDEX idx_collate ON index_test(val COLLATE "en_US");

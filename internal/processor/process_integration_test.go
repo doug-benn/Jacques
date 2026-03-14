@@ -354,8 +354,8 @@ func TestIntegration_InferMissingSchemas(t *testing.T) {
 			tables: map[string]*model.TableDef{
 				"\"MySchema\".foo": {Schema: "\"MySchema\"", Name: "foo"},
 			},
-			// Current implementation uses strings.ToLower on schema name, 
-			// so "MySchema" becomes "myschema", which may incorrectly 
+			// Current implementation uses strings.ToLower on schema name,
+			// so "MySchema" becomes "myschema", which may incorrectly
 			// match an unquoted schema if one existed.
 			// This test ensures we're aware of the behavior.
 			typeStmts: []string{"CREATE SCHEMA \"myschema\";"},
@@ -440,7 +440,7 @@ func TestIntegration_CountSequenceUsage(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := countSequenceUsage(tt.tables, tt.tableOrder)
+			result := countSequenceUsage(tt.tables, tt.tableOrder, make(map[string]map[string]bool))
 			assert.Equal(t, tt.want, result)
 		})
 	}
@@ -514,7 +514,7 @@ func TestIntegration_ApplySerialConversion(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			applySerialConversion(tt.tables, tt.tableOrder, tt.usageCount, nil)
+			applySerialConversion(tt.tables, tt.tableOrder, tt.usageCount, nil, make(map[string]map[string]bool))
 			for _, td := range tt.tables {
 				for _, col := range td.Columns {
 					if col.SequenceName != "" {

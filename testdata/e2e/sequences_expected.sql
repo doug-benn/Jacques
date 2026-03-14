@@ -13,6 +13,8 @@ CREATE SEQUENCE cycle_seq
     CACHE 5
     CYCLE;
 
+CREATE SEQUENCE shared_trigger_seq OWNED BY trigger_table_a.id;
+
 CREATE TABLE shared_table_1 (
     id bigint  DEFAULT nextval('shared_seq'::regclass) PRIMARY KEY
 );
@@ -41,6 +43,54 @@ CREATE TABLE cycle_table (
     id bigint NOT NULL DEFAULT nextval('cycle_seq'::regclass) PRIMARY KEY
 );
 
+CREATE TABLE trigger_seq_single (
+    id BIGSERIAL PRIMARY KEY
+);
+
+CREATE TABLE trigger_table_a (
+    id bigint NOT NULL PRIMARY KEY
+);
+
+CREATE TABLE trigger_table_b (
+    id bigint NOT NULL PRIMARY KEY
+);
+
 ALTER SEQUENCE complex_seq RESTART WITH 2000;
 
 ALTER SEQUENCE cycle_seq INCREMENT BY 2;
+
+CREATE FUNCTION set_trigger_single_id() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    NEW.id := nextval('trigger_seq_single_id_seq'::regclass);
+    RETURN NEW;
+END
+$$;
+
+CREATE TRIGGER trg_single
+    BEFORE INSERT ON trigger_seq_single
+    FOR EACH ROW
+    EXECUTE FUNCTION set_trigger_single_id();
+
+CREATE FUNCTION set_shared_id_a() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    NEW.id := nextval('shared_trigger_seq'::regclass);
+    RETURN NEW;
+END
+$$;
+
+CREATE FUNCTION set_shared_id_b() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    NEW.id := nextval('shared_trigger_seq'::regclass);
+    RETURN NEW;
+END
+$$;
+
+CREATE TRIGGER trg_a
+    BEFORE INSERT ON trigger_table_a
+    FOR EACH ROW
+    EXECUTE FUNCTION set_shared_id_a();
+
+CREATE TRIGGER trg_b
+    BEFORE INSERT ON trigger_table_b
+    FOR EACH ROW
+    EXECUTE FUNCTION set_shared_id_b();
