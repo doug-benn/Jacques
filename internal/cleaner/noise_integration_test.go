@@ -31,6 +31,12 @@ func TestIntegration_IsNoise(t *testing.T) {
 		{"psql unset", "\\unset foo", true},
 		{"psql restricted", "\\restricted", true},
 		{"psql unrestricted", "\\unrestricted", true},
+		{"psql connect", "\\connect mydb", true},
+		{"psql connect short", "\\c mydb", true},
+		{"psql password", "\\password user", true},
+		{"psql timing", "\\timing on", true},
+		{"psql echo", "\\echo Hello", true},
+		{"psql setenv", "\\setenv VAR value", true},
 	}
 
 	for _, tt := range tests {

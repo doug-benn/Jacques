@@ -1,7 +1,7 @@
 -- Test fixture for noise removal
 -- Transformations tested:
 --   - Administrative noise (SET, GRANT, OWNER TO)
---   - psql metacommands (\set, \unset, etc.)
+--   - psql metacommands (\set, \unset, \connect, \password, etc.)
 --   - ONLY keyword removal
 --   - Block and line comment removal (quote-aware)
 --   - DROP IF EXISTS addition
@@ -11,6 +11,12 @@ SET statement_timeout = 0;
 \set QUIET on
 \set EMPTY_VAR
 \restricted
+\connect mydb
+\c otherdb
+\password user
+\timing on
+\echo Hello world
+\setenv VAR value
 
 -- 2. Comments (Header, Inline, Footer)
 /* Header block comment */
