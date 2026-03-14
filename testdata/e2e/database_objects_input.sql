@@ -22,6 +22,12 @@ CREATE TABLE "MySchema".profile (
     bio text
 );
 
+-- Table for JOIN tests
+CREATE TABLE other_table (
+    id bigint NOT NULL PRIMARY KEY,
+    name text NOT NULL
+);
+
 -- 2. Views (Regular and Materialized)
 CREATE VIEW simple_view AS SELECT id, val FROM public.base_table;
 
@@ -29,6 +35,43 @@ CREATE MATERIALIZED VIEW mat_view AS
 SELECT id, count(*) as cnt FROM public.base_table GROUP BY id;
 
 CREATE INDEX idx_mat_view_id ON mat_view(id);
+
+-- View with ORDER BY and LIMIT
+CREATE VIEW ordered_view AS
+SELECT id, val FROM public.base_table
+ORDER BY id DESC LIMIT 100;
+
+-- View with JOIN
+CREATE VIEW joined_view AS
+SELECT a.id, a.val, b.name
+FROM public.base_table a
+JOIN other_table b ON a.id = b.id;
+
+-- View with UNION
+CREATE VIEW union_view AS
+SELECT id, val FROM public.base_table WHERE val = 'a'
+UNION
+SELECT id, val FROM public.base_table WHERE val = 'b';
+
+-- INSTEAD OF trigger on view
+CREATE VIEW updatable_view AS
+SELECT id, val FROM public.base_table;
+
+CREATE OR REPLACE FUNCTION updatable_view_trigger() RETURNS TRIGGER AS $$
+BEGIN
+    INSERT INTO public.base_table (id, val) VALUES (NEW.id, NEW.val);
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE INSTEAD OF INSERT ON updatable_view
+FOR EACH ROW EXECUTE FUNCTION updatable_view_trigger();
+
+-- Materialized view with DISTINCT
+CREATE MATERIALIZED VIEW mat_distinct_view AS
+SELECT DISTINCT val FROM public.base_table;
+
+CREATE INDEX idx_mat_distinct ON mat_distinct_view(val);
 
 -- 3. Functions (Scalar and Table-returning)
 CREATE OR REPLACE FUNCTION public.get_val(row_id bigint) RETURNS text AS $$

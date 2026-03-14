@@ -11,6 +11,7 @@ var noisePatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)^GRANT\s+`),
 	regexp.MustCompile(`(?i)^REVOKE\s+`),
 	regexp.MustCompile(`(?i)^COMMENT\s+ON\s+`),
+	regexp.MustCompile(`(?i)^ALTER\s+FUNCTION\s+.+?OWNER\s+TO\b`),
 	regexp.MustCompile(`(?i)^ALTER\s+\w+\s+\S+\s+OWNER\s+TO\b`),
 	regexp.MustCompile(`(?i)^\\`),
 }

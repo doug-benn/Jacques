@@ -32,6 +32,11 @@ ALTER TABLE ONLY noise_test OWNER TO testuser;
 GRANT ALL ON TABLE noise_test TO testuser;
 COMMENT ON TABLE noise_test IS 'A noisy table';
 
+-- ALTER FUNCTION OWNER edge cases
+ALTER FUNCTION func_simple() OWNER TO postgres;
+ALTER FUNCTION func_params(param type) OWNER TO postgres;
+ALTER FUNCTION func_returns() RETURNS TABLE(id int) OWNER TO postgres;
+
 -- 4. DROP IF EXISTS
 DROP TABLE public.drop_test;
 DROP VIEW public.drop_view;

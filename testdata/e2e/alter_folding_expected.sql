@@ -27,7 +27,9 @@ CREATE TABLE fk_child (
     id bigint PRIMARY KEY,
     parent_id bigint REFERENCES fk_parent(id),
     col_cascade bigint REFERENCES fk_parent(id) ON DELETE CASCADE NOT NULL,
-    col_match_full bigint REFERENCES fk_parent(id) MATCH FULL
+    col_match_full bigint REFERENCES fk_parent(id) MATCH FULL,
+    col_set_null bigint REFERENCES fk_parent(id) ON DELETE SET NULL ON UPDATE SET NULL,
+    col_set_default bigint REFERENCES fk_parent(id) ON DELETE SET DEFAULT ON UPDATE SET DEFAULT
 );
 
 CREATE TABLE parent_table (

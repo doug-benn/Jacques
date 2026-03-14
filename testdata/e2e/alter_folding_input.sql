@@ -51,7 +51,9 @@ CREATE TABLE fk_child (
     id bigint PRIMARY KEY,
     parent_id bigint,
     col_cascade bigint NOT NULL,
-    col_match_full bigint
+    col_match_full bigint,
+    col_set_null bigint,
+    col_set_default bigint
 );
 
 -- Simple inlining
@@ -60,6 +62,10 @@ ALTER TABLE ONLY fk_child ADD CONSTRAINT simple_fkey FOREIGN KEY (parent_id) REF
 ALTER TABLE ONLY fk_child ADD CONSTRAINT cascade_fkey FOREIGN KEY (col_cascade) REFERENCES fk_parent(id) ON DELETE CASCADE;
 -- Inlining with MATCH
 ALTER TABLE ONLY fk_child ADD CONSTRAINT match_fkey FOREIGN KEY (col_match_full) REFERENCES fk_parent(id) MATCH FULL;
+-- Inlining with ON DELETE SET NULL ON UPDATE SET NULL
+ALTER TABLE ONLY fk_child ADD CONSTRAINT set_null_fkey FOREIGN KEY (col_set_null) REFERENCES fk_parent(id) ON DELETE SET NULL ON UPDATE SET NULL;
+-- Inlining with ON DELETE SET DEFAULT ON UPDATE SET DEFAULT
+ALTER TABLE ONLY fk_child ADD CONSTRAINT set_default_fkey FOREIGN KEY (col_set_default) REFERENCES fk_parent(id) ON DELETE SET DEFAULT ON UPDATE SET DEFAULT;
 
 -- Self-referential (passes through)
 ALTER TABLE ONLY fk_child ADD CONSTRAINT self_fkey FOREIGN KEY (id) REFERENCES fk_child(id);
