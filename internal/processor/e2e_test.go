@@ -5,6 +5,7 @@ package processor
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -274,6 +275,28 @@ func (tc *testContainer) runSQL(dbName, sql string) error {
 	return err
 }
 
+// dumpDatabase dumps the schema of a database in the container using pg_dump.
+func (tc *testContainer) dumpDatabase(dbName string) (string, error) {
+	// Build pg_dump command to run in container
+	// We want schema-only (-s) and plain text format
+	cmd := []string{"pg_dump", "-U", testDBUser, "-h", "localhost", "-s", dbName}
+	exitCode, stdout, err := tc.container.Exec(tc.ctx, cmd)
+	if err != nil {
+		return "", fmt.Errorf("failed to execute pg_dump: %w", err)
+	}
+
+	stdoutBytes, err := io.ReadAll(stdout)
+	if err != nil {
+		return "", fmt.Errorf("failed to read pg_dump stdout: %w", err)
+	}
+
+	if exitCode != 0 {
+		return "", fmt.Errorf("pg_dump failed with exit code %d: %s", exitCode, string(stdoutBytes))
+	}
+
+	return string(stdoutBytes), nil
+}
+
 // compareSchemas compares two databases using pg-schema-diff.
 func compareSchemas(t *testing.T, fromDSN, toDSN, msg string) {
 	t.Helper()
@@ -440,6 +463,52 @@ func TestE2E_PgDumpCleanRemigrate(t *testing.T) {
 			// Step 6: Compare schemas - should be semantically equivalent
 			compareSchemas(t, connStrs[dbNames[0]], connStrs[dbNames[1]],
 				"Cleaner should produce semantically equivalent schema")
+		})
+	}
+}
+
+// TestE2E_RoundTrip semantic validation.
+// This test uses a "Load -> Dump -> Clean -> Load -> Diff" workflow:
+// 1. Load the original corpus SQL into DB A.
+// 2. Use pg_dump to extract the schema from DB A.
+// 3. Run Jacques cleaner on the dump output.
+// 4. Load the cleaned schema into DB B.
+// 5. Compare DB A and DB B using pg-schema-diff.
+func TestE2E_RoundTrip(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Round-trip tests require full test run")
+	}
+
+	corpus := DiscoverCorpus("testdata/corpus/")
+	require.NotEmpty(t, corpus, "no corpus fixtures found")
+
+	for _, c := range corpus {
+		t.Run(c.Name, func(t *testing.T) {
+			inputSQL := LoadFixture(t, c.Dir, c.Name)
+
+			dbNames := []string{"rt_orig", "rt_clean"}
+			connStrs := createTestDBs(t, container.connStr, dbNames...)
+			defer cleanupTestDBs(t, container.connStr, dbNames...)
+
+			// Step 1: Load original SQL into DB A
+			require.NoError(t, container.runSQL(dbNames[0], inputSQL),
+				"failed to load original SQL from %s into rt_orig", c.Name)
+
+			// Step 2: Use pg_dump to extract schema from DB A
+			dumpedSQL, err := container.dumpDatabase(dbNames[0])
+			require.NoError(t, err, "failed to pg_dump rt_orig for %s", c.Name)
+			require.NotEmpty(t, dumpedSQL, "pg_dump produced empty output for %s", c.Name)
+
+			// Step 3: Run Jacques cleaner on the dump output
+			cleanedOutput := runCleaner(t, dumpedSQL)
+
+			// Step 4: Load the cleaned schema into DB B
+			require.NoError(t, container.runSQL(dbNames[1], cleanedOutput),
+				"failed to load cleaned SQL for %s into rt_clean", c.Name)
+
+			// Step 5: Compare DB A and DB B using pg-schema-diff
+			compareSchemas(t, connStrs[dbNames[0]], connStrs[dbNames[1]],
+				"Semantic mismatch detected for "+c.Name)
 		})
 	}
 }
