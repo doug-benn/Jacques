@@ -10,6 +10,8 @@ import (
 	"github.com/doug-benn/Jacques/internal/parser"
 )
 
+var onlyKeywordRE = regexp.MustCompile(`(?i)\bONLY\b\s*`) //TODO: Move/fix
+
 // StatementType represents the type of SQL statement being processed.
 // This is used to categorize statements during the processing pipeline.
 type StatementType int
@@ -780,12 +782,22 @@ func buildOutput(
 		// This handles DROP, ALTER, and other statements that reference public schema
 		stmt = strings.ReplaceAll(stmt, "public.", "")
 
+		// Remove ONLY keyword from ALTER TABLE statements for consistency
+		// Only remove from ALTER TABLE (not CREATE TABLE)
+		if strings.HasPrefix(upper, "ALTER TABLE") {
+			stmt = onlyKeywordRE.ReplaceAllString(stmt, "")
+		}
+
 		output = append(output, stmt)
 	}
 
 	// Remove public. prefix from fkPassthroughs for consistency
 	for i, stmt := range fkPassthroughs {
 		fkPassthroughs[i] = strings.ReplaceAll(stmt, "public.", "")
+		// Remove ONLY keyword from ALTER TABLE statements
+		if strings.HasPrefix(strings.ToUpper(fkPassthroughs[i]), "ALTER TABLE") {
+			fkPassthroughs[i] = onlyKeywordRE.ReplaceAllString(fkPassthroughs[i], "")
+		}
 	}
 
 	output = append(output, fkPassthroughs...)
@@ -895,7 +907,10 @@ func preprocessSQL(sql string) string {
 			for i < n && sql[i] != '\n' {
 				i++
 			}
-			// Keep the newline to preserve line structure
+			// Skip the newline to avoid leading newlines in output
+			if i < n && sql[i] == '\n' {
+				i++
+			}
 			continue
 		}
 

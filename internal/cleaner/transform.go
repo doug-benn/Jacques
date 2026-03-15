@@ -48,7 +48,9 @@ func ParseCreateTable(stmt string) (*model.TableDef, error) {
 	}
 
 	if inheritsMatch := inheritsRE.FindString(stmt[bodyEnd:]); inheritsMatch != "" {
-		td.Inherits = strings.TrimSpace(inheritsMatch)
+		inherits := strings.TrimSpace(inheritsMatch)
+		inherits = onlyKeywordRE.ReplaceAllString(inherits, "")
+		td.Inherits = strings.TrimSpace(inherits)
 	}
 
 	if partitionMatch := partitionByRE.FindString(stmt[bodyEnd:]); partitionMatch != "" {
