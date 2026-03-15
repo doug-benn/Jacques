@@ -17,6 +17,7 @@ var partitionByRE = regexp.MustCompile(`(?i)\s+PARTITION\s+BY\s+\w+\s*\([^)]+\)`
 var partitionOfRE = regexp.MustCompile(`(?i)^CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:(` + identifierRE + `)\.)?(` + identifierRE + `)\s+PARTITION\s+OF\s+`)
 var colDefRE = regexp.MustCompile(`^\s*(` + identifierRE + `)\s+(.+)$`)
 var nextvalRE = regexp.MustCompile(`nextval\('([^']+)'`)
+var onlyKeywordRE = regexp.MustCompile(`(?i)\bONLY\b\s*`)
 var primaryKeyNotNullRE = regexp.MustCompile(`(?i)\bPRIMARY\s+KEY\s*\([^)]+\)\s*NOT\s+NULL\b`)
 var fkRefRE = regexp.MustCompile(`REFERENCES\s+(` + identifierRE + `)\s*(?:\(([^)]+)\))?(\s+ON\s+DELETE\s+(NO\s+ACTION|RESTRICT|CASCADE|SET\s+NULL|SET\s+DEFAULT))?(\s+ON\s+UPDATE\s+(NO\s+ACTION|RESTRICT|CASCADE|SET\s+NULL|SET\s+DEFAULT))?(\s+MATCH\s+(FULL|PARTIAL))?`)
 var whitespaceRE = regexp.MustCompile(`\s+`)
@@ -109,25 +110,47 @@ func parseTableBody(body string) ([]*model.ColumnDef, []string, error) {
 
 	depth := 0
 	colStart := 0
+	inSingleQuote := false
+	inDoubleQuote := false
 
-	for i, ch := range body {
-		if ch == '(' {
-			depth++
-		} else if ch == ')' {
-			depth--
-		} else if ch == ',' && depth == 0 {
-			segment := strings.TrimSpace(body[colStart:i])
-			if segment != "" {
-				if isColumnDef(segment) {
-					col := parseColumnDef(segment)
-					if col != nil {
-						cols = append(cols, col)
-					}
-				} else {
-					constraints = append(constraints, segment)
-				}
+	for i := 0; i < len(body); i++ {
+		ch := body[i]
+
+		// Handle quotes
+		if ch == '\'' && !inDoubleQuote {
+			// Check for escaped single quote ''
+			if inSingleQuote && i+1 < len(body) && body[i+1] == '\'' {
+				i++ // Skip next quote
+			} else {
+				inSingleQuote = !inSingleQuote
 			}
-			colStart = i + 1
+			continue
+		}
+		if ch == '"' && !inSingleQuote {
+			inDoubleQuote = !inDoubleQuote
+			continue
+		}
+
+		// Only handle parentheses and commas if NOT in quotes
+		if !inSingleQuote && !inDoubleQuote {
+			if ch == '(' {
+				depth++
+			} else if ch == ')' {
+				depth--
+			} else if ch == ',' && depth == 0 {
+				segment := strings.TrimSpace(body[colStart:i])
+				if segment != "" {
+					if isColumnDef(segment) {
+						col := parseColumnDef(segment)
+						if col != nil {
+							cols = append(cols, col)
+						}
+					} else {
+						constraints = append(constraints, segment)
+					}
+				}
+				colStart = i + 1
+			}
 		}
 	}
 

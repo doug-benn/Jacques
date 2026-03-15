@@ -895,9 +895,7 @@ func preprocessSQL(sql string) string {
 			for i < n && sql[i] != '\n' {
 				i++
 			}
-			if i < n && sql[i] == '\n' {
-				i++
-			}
+			// Keep the newline to preserve line structure
 			continue
 		}
 
@@ -918,21 +916,6 @@ func preprocessSQL(sql string) string {
 				}
 			}
 			continue
-		}
-
-		// Handle ONLY keyword
-		if !inSingleQuote && !inDoubleQuote && dollarTag == "" && i+4 <= n && strings.EqualFold(sql[i:i+4], "ONLY") {
-			// Check word boundaries
-			before := i == 0 || !isAlphaNum(sql[i-1])
-			after := i+4 == n || !isAlphaNum(sql[i+4])
-			if before && after {
-				i += 4
-				// Skip trailing whitespace
-				for i < n && (sql[i] == ' ' || sql[i] == '\t') {
-					i++
-				}
-				continue
-			}
 		}
 
 		result.WriteByte(sql[i])

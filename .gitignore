@@ -35,4 +35,4 @@ go.work.sum
 dist/
 
 *.wasm
-*.js
+wasm_exec.js

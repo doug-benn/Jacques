@@ -3,816 +3,330 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Jacques</title>
-    <meta name="title" content="Jacques" />
+    <title>Jacques | Database Schema Decontaminator</title>
+    <meta name="title" content="Jacques | Database Schema Decontaminator" />
     <meta
       name="description"
-      content="Jacques decontaminates database schema dumps. Cleaning, folding and consolidating schemas for use in migrations, sqlc, ORMs, and version control."
+      content="Jacques decontaminates database schema dumps. Cleaning, folding and consolidating PostgreSQL schemas for use in migrations, sqlc, ORMs, and version control."
     />
     <meta
       name="keywords"
-      content="PostgreSQL, pg_dump, schema, cleaner, SQL, migration, database, folding, consolidate, decontaminate, decontamination, sqlc, ORM, SERIAL, BIGSERIAL, sequence, foreign key, primary key, constraints, enum, domain, generated columns, CREATE TABLE, ALTER TABLE, version control, database schema, schema cleaner, schema consolidation"/>
+      content="PostgreSQL, pg_dump, schema, cleaner, SQL, migration, database, folding, consolidate, decontaminate, decontamination, sqlc, ORM, SERIAL, BIGSERIAL, sequence, foreign key, primary key, constraints, enum, domain, generated columns, CREATE TABLE, ALTER TABLE, version control, database schema, schema cleaner, schema consolidation"
+    />
     <meta name="author" content="Doug Benn" />
-    <meta property="og:title" content="Jacques" />
-    <meta property="og:description" content="Jacques decontaminates database schema dumps. Cleaning, folding and consolidating schemas for use in migrations, sqlc, ORMs, and version control." />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self'; img-src 'self' data:; connect-src 'self';"
+    />
+
+    <!-- Open Graph / Facebook -->
+    <meta
+      property="og:title"
+      content="Jacques | Database Schema Decontaminator"
+    />
+    <meta
+      property="og:description"
+      content="Jacques decontaminates database schema dumps. Cleaning, folding and consolidating schemas for use in migrations, sqlc, ORMs, and version control."
+    />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://usejacques.com" />
     <meta property="og:site_name" content="Jacques" />
+
     <script type="application/ld+json">
-    {
-      "@context": "https://schema.org",
-      "@type": "WebApplication",
-      "name": "Jacques",
-      "description": "Jacques decontaminates database schema dumps. Cleaning, folding and consolidating schemas for use in migrations, sqlc, ORMs, and version control.",
-      "url": "https://usejacques.com",
-      "applicationCategory": "DeveloperApplication",
-      "operatingSystem": "Web Browser",
-      "browserRequirements": "Requires JavaScript. Requires WebAssembly support.",
-      "author": {
-        "@type": "Person",
-        "name": "Doug Benn"
+      {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "Jacques",
+        "description": "Jacques decontaminates database schema dumps. Cleaning, folding and consolidating schemas for use in migrations, sqlc, ORMs, and version control.",
+        "url": "https://usejacques.com",
+        "applicationCategory": "DeveloperApplication",
+        "operatingSystem": "Web Browser",
+        "browserRequirements": "Requires JavaScript. Requires WebAssembly support.",
+        "author": {
+          "@type": "Person",
+          "name": "Doug Benn"
+        }
       }
-    }
     </script>
+
     <link
       rel="icon"
       href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>🦐</text></svg>"
     />
-    <style>
-      * {
-        margin: 0;
-        padding: 0;
-        box-sizing: border-box;
-      }
-
-      body {
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue",sans-serif;
-        height: 100vh;
-        display: flex;
-        flex-direction: column;
-        background: #f5f5f5;
-      }
-
-      header {
-        background: #cb0715;
-        color: white;
-        padding: 12px 20px;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-      }
-
-      header h1 {
-        font-size: 1.4rem;
-        font-weight: 600;
-      }
-
-      .skip-link {
-        position: absolute;
-        top: -40px;
-        left: 0;
-        background: #cb0715;
-        color: white;
-        padding: 8px 16px;
-        z-index: 1000;
-        text-decoration: none;
-        font-weight: 500;
-      }
-
-      .skip-link:focus {
-        top: 0;
-      }
-
-      main {
-        flex: 1;
-        display: flex;
-        min-height: 0;
-      }
-
-      .about-dropdown {
-        position: relative;
-        display: inline-block;
-      }
-
-      .about-dropdown summary {
-        cursor: pointer;
-        list-style: none;
-        color: white;
-        font-size: 0.95rem;
-        padding: 4px 8px;
-        border-radius: 4px;
-        transition: background 0.2s;
-      }
-
-      .about-dropdown summary:hover {
-        background: rgba(255, 255, 255, 0.2);
-      }
-
-      .about-dropdown summary::-webkit-details-marker {
-        display: none;
-      }
-
-      .about-dropdown summary::after {
-        content: " ▼";
-        font-size: 0.7rem;
-      }
-
-      .about-dropdown[open] summary::after {
-        content: " ▲";
-      }
-
-      .about-content {
-        position: absolute;
-        top: 100%;
-        right: 0;
-        margin-top: 8px;
-        width: 600px;
-        max-width: calc(100vw - 32px);
-        background: white;
-        color: #333;
-        border-radius: 8px;
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
-        padding: 16px;
-        font-size: 0.85rem;
-        line-height: 1.6;
-        z-index: 100;
-        text-align: left;
-      }
-
-      .about-content p {
-        margin-bottom: 12px;
-      }
-
-      .about-content a {
-        color: #cb0715;
-        text-decoration: none;
-        font-weight: 500;
-      }
-
-      .about-content a:hover {
-        text-decoration: underline;
-      }
-
-      .privacy-dropdown {
-        position: relative;
-        display: inline-block;
-      }
-
-      .privacy-dropdown summary {
-        cursor: pointer;
-        list-style: none;
-        color: white;
-        font-size: 0.95rem;
-        padding: 4px 8px;
-        border-radius: 4px;
-        transition: background 0.2s;
-      }
-
-      .privacy-dropdown summary:hover {
-        background: rgba(255, 255, 255, 0.2);
-      }
-
-      .privacy-dropdown summary::-webkit-details-marker {
-        display: none;
-      }
-
-      .privacy-dropdown summary::after {
-        content: " ▼";
-        font-size: 0.7rem;
-      }
-
-      .privacy-dropdown[open] summary::after {
-        content: " ▲";
-      }
-
-      .privacy-content {
-        position: absolute;
-        top: 100%;
-        right: 0;
-        margin-top: 8px;
-        width: 450px;
-        max-width: calc(100vw - 32px);
-        background: white;
-        color: #333;
-        border-radius: 8px;
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
-        padding: 16px;
-        font-size: 0.85rem;
-        line-height: 1.8;
-        z-index: 100;
-      }
-
-      .privacy-content p {
-        margin-bottom: 4px;
-      }
-
-      .privacy-content a {
-        color: #cb0715;
-        text-decoration: none;
-        font-weight: 500;
-      }
-
-      .controls {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-      }
-
-      .btn {
-        padding: 6px 12px;
-        font-size: 0.85rem;
-        border: none;
-        border-radius: 4px;
-        cursor: pointer;
-        font-weight: 500;
-        transition: background 0.2s;
-      }
-
-      .btn-copy {
-        background: #cb0715;
-        color: white;
-      }
-
-      .btn-copy:hover {
-        background: #a00510;
-      }
-
-      .btn-clear {
-        background: #eee;
-        color: #666;
-      }
-
-      .btn-clear:hover {
-        background: #ddd;
-      }
-
-      .controls label {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        font-size: 0.9rem;
-        cursor: pointer;
-      }
-
-      .controls input[type="checkbox"] {
-        accent-color: #cb0715;
-        width: 16px;
-        height: 16px;
-      }
-
-      .status {
-        font-size: 0.75rem;
-        color: #999;
-        margin-left: 8px;
-        font-weight: normal;
-      }
-
-      .status.done {
-        color: #28a745;
-      }
-
-      .status.error {
-        color: #dc3545;
-      }
-
-      .container {
-        flex: 1;
-        display: flex;
-        gap: 0;
-        padding: 12px;
-        min-height: 0;
-        position: relative;
-      }
-
-      .resize-handle {
-        width: 8px;
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        align-items: center;
-        gap: 4px;
-        cursor: col-resize;
-        flex-shrink: 0;
-      }
-
-      .dot {
-        width: 3px;
-        height: 3px;
-        background: #999;
-        border-radius: 50%;
-      }
-
-      .resize-handle:hover .dot {
-        background: #666;
-      }
-
-      .panel {
-        flex: 1;
-        display: flex;
-        flex-direction: column;
-        background: white;
-        border-radius: 6px;
-        overflow: hidden;
-        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-        min-width: 150px;
-      }
-
-      .panel-header {
-        background: white;
-        color: #333;
-        padding: 10px 14px;
-        font-size: 0.85rem;
-        font-weight: 600;
-        border-bottom: 1px solid #eee;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-      }
-
-      .panel-header .btn {
-        padding: 4px 10px;
-        font-size: 0.75rem;
-      }
-
-      .panel-header-controls {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-      }
-
-      .panel-header-controls label {
-        display: flex;
-        align-items: center;
-        gap: 4px;
-        font-size: 0.75rem;
-        font-weight: normal;
-        cursor: pointer;
-        color: #666;
-      }
-
-      .panel-header-controls input[type="checkbox"] {
-        accent-color: #cb0715;
-        width: 14px;
-        height: 14px;
-      }
-
-      .panel textarea {
-        flex: 1;
-        width: 100%;
-        border: none;
-        resize: none;
-        padding: 12px;
-        font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace;
-        font-size: 13px;
-        line-height: 1.5;
-        background: white;
-        color: #333;
-      }
-
-      .panel textarea:focus {
-        outline: none;
-      }
-
-      .panel textarea::placeholder {
-        color: #999;
-      }
-
-      .panel textarea.error {
-        background: #fff5f5;
-        color: #cc0000;
-      }
-
-      .loading-overlay {
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background: rgba(255, 255, 255, 0.7);
-        backdrop-filter: blur(2px);
-        -webkit-backdrop-filter: blur(2px);
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        gap: 12px;
-        z-index: 10;
-        border-radius: 6px;
-      }
-
-      .loading-overlay.hidden {
-        display: none;
-        pointer-events: none;
-      }
-
-      .loading-spinner {
-        width: 32px;
-        height: 32px;
-        border: 3px solid #eee;
-        border-top-color: #cb0715;
-        border-radius: 50%;
-        animation: spin 0.8s linear infinite;
-      }
-
-      @keyframes spin {
-        to {
-          transform: rotate(360deg);
-        }
-      }
-
-      .loading-text {
-        font-size: 0.9rem;
-        color: #666;
-      }
-
-      .toast {
-        position: fixed;
-        bottom: 20px;
-        left: 50%;
-        transform: translateX(-50%);
-        background: #333;
-        color: white;
-        padding: 10px 20px;
-        border-radius: 4px;
-        font-size: 0.9rem;
-        opacity: 0;
-        transition: opacity 0.3s;
-        z-index: 1001;
-      }
-
-      .toast.show {
-        opacity: 1;
-      }
-
-      .toast.success {
-        background: #28a745;
-      }
-
-      .toast.error {
-        background: #dc3545;
-      }
-
-      @media (max-width: 600px) {
-        header {
-          flex-wrap: wrap;
-          gap: 8px;
-          padding: 10px 12px;
-        }
-
-        header h1 {
-          font-size: 1.2rem;
-        }
-
-        .controls {
-          gap: 8px;
-        }
-
-        .about-dropdown summary,
-        .privacy-dropdown summary {
-          font-size: 0.85rem;
-          padding: 4px 6px;
-        }
-
-        .container {
-          flex-direction: column;
-          gap: 12px;
-        }
-
-        .resize-handle {
-          display: none;
-        }
-
-        .panel {
-          min-width: 100%;
-          min-height: 200px;
-        }
-
-        .panel-header {
-          font-size: 0.75rem;
-          padding: 8px 10px;
-        }
-
-        .panel-header-controls {
-          gap: 8px;
-        }
-
-        .panel textarea {
-          font-size: 12px;
-          padding: 8px;
-        }
-      }
-    </style>
+    <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <a href="#main-content" class="skip-link">Skip to main content</a>
-    <div class="toast" id="toast" role="alert" aria-live="assertive"></div>
-
     <header>
-      <h1>🦐 <strong>Jacques</strong> - decontaminating schemas</h1>
-      <div class="controls">
-        <details class="about-dropdown">
-          <summary>About</summary>
-          <div class="about-content">
-            <p>
-              <strong>Jacques</strong> decontaminates database schema dumps.
-              Cleaning, folding and consolidating schemas for use in migrations,
-              sqlc, ORMs, and version control.
-            </p>
-            <p>
-              Currently supports <strong>PostgresSQL</strong>. More databases
-              coming soon.
-            </p>
-            <p>Features:</p>
-            <ul style="margin: 8px 0 12px 20px">
-              <li>
-                Removes noise: comments, `GRANT`, `REVOKE`, `OWNER TO`, `SET`,
-                session config
-              </li>
-              <li>
-                Consolidates `CREATE TABLE` + `ALTER TABLE` statements into
-                self-contained definitions
-              </li>
-              <li>Inlines foreign key constraints into column definitions</li>
-              <li>Converts sequences to `SERIAL`/`BIGSERIAL` types</li>
-              <li>
-                Handles database-specific types: enums, domains, generated
-                columns
-              </li>
-              <li>
-                Guaranteed semantic equivalence - cleaned output produces
-                identical schema
-              </li>
-            </ul>
-            <p><strong>Experimental Folding</strong></p>
-            <p style="margin-top: 4px">
-              Toggles foldering transformations that can't be end-to-end tested.
-              Because the semantic equivalence can't be tested these schema
-              transformations are opt-in at your own risk - Please check the
-              output carefully!
-            </p>
-            <p>
-              <a
-                href="https://github.com/doug-benn/Jacques"
-                target="_blank"
-                rel="noopener"
-                >Jacques on GitHub →</a
-              >
-            </p>
-          </div>
-        </details>
-        <details class="privacy-dropdown">
-          <summary>Privacy</summary>
-          <div class="privacy-content">
-            <p>
-              Your database schemas very important. Do not paste them into
-              random tools on the internet!
-            </p>
-            <p>But this tool:</p>
-            <p>• All processing happens locally in your browser</p>
-            <p>• No data is sent to any server</p>
-            <p>• Your schema is never stored or logged</p>
-            <p>
-              Please feel free to audit the code on github or run it offline
-              yourself
-            </p>
-            <p>
-              <a
-                href="https://github.com/doug-benn/Jacques"
-                target="_blank"
-                rel="noopener"
-                >Jacques on GitHub →</a
-              >
-            </p>
-          </div>
-        </details>
+      <div class="header-brand">
+        <h1>🦐 Jacques</h1>
+        <span class="tagline">SQL Schema Decontaminator</span>
       </div>
+      <nav class="header-nav">
+        <a href="#about" id="aboutLink">About</a>
+        <a
+          href="https://github.com/doug-benn/Jacques"
+          target="_blank"
+          rel="noopener"
+          >GitHub</a
+        >
+      </nav>
     </header>
 
-    <main>
-      <div class="container" id="main-content">
-      <div class="loading-overlay" id="loading">
-        <div class="loading-spinner"></div>
-        <div class="loading-text">Loading Jacques...</div>
-      </div>
-      <div class="panel">
-        <div class="panel-header">
-          <span>Input</span>
-          <button class="btn btn-clear" id="clearBtn">Clear</button>
+    <main id="main-content">
+      <div class="container">
+        <div class="loading-overlay" id="loading">
+          <div class="loading-spinner"></div>
+          <div class="loading-text">Loading Jacques...</div>
         </div>
-        <textarea id="input" aria-label="Input" placeholder="Paste schema here..."></textarea>
+        <div class="panel panel-input" id="inputPanel">
+          <div class="panel-header">
+            <span>Input</span>
+            <button class="btn btn-clear" id="clearBtn">Clear</button>
+          </div>
+          <input type="file" id="fileInput" accept=".sql,.txt" />
+          <div
+            class="drop-zone"
+            id="dropZone"
+            title="Paste, drop, or click to choose a file"
+          >
+            <div class="drop-icon">📂</div>
+            <div class="drop-text">
+              Paste, drop or <span class="link-style">choose</span> SQL shema
+            </div>
+            <!-- <div class="drop-subtext">Supports .sql and .txt</div> -->
+          </div>
+          <textarea id="input" aria-label="Input SQL"></textarea>
+        </div>
+        <div class="resize-handle">
+          <span class="dot"></span>
+          <span class="dot"></span>
+          <span class="dot"></span>
+        </div>
+        <div class="panel panel-output" id="outputPanel">
+          <div class="panel-header">
+            <span
+              >Output <span class="status" id="status" aria-live="polite"></span
+            ></span>
+            <div class="panel-header-controls">
+              <label
+                title="Enable transformations that cannot be fully E2E validated (e.g. multi-parent inheritance)"
+              >
+                <input type="checkbox" id="experimental" />
+                Experimental Folding
+              </label>
+              <button
+                class="btn btn-copy"
+                id="copyBtn"
+                title="Copy to clipboard"
+                disabled
+              >
+                Copy
+              </button>
+              <button
+                class="btn btn-download"
+                id="downloadBtn"
+                title="Download as .sql file"
+                disabled
+              >
+                Download
+              </button>
+            </div>
+          </div>
+          <div class="output-placeholder" aria-hidden="true">
+            <div class="placeholder-icon">🦐</div>
+            <div class="placeholder-text">
+              Decontaminated SQL will appear here
+            </div>
+          </div>
+          <textarea
+            id="output"
+            aria-label="Cleaned Output SQL"
+            readonly
+          ></textarea>
+        </div>
+
+        <button
+          class="scroll-hint"
+          id="scrollBtn"
+          aria-label="Scroll to About and Privacy sections"
+        >
+          <span>About & Privacy</span>
+          <div class="arrow">↓</div>
+        </button>
       </div>
-      <div class="resize-handle">
-        <span class="dot"></span>
-        <span class="dot"></span>
-        <span class="dot"></span>
-      </div>
-      <div class="panel">
-        <div class="panel-header">
-          <span>Output <span class="status" id="status" aria-live="polite"></span></span>
-          <div class="panel-header-controls">
-            <label>
-              <input type="checkbox" id="experimental" />
-              Experimental Folding
-            </label>
-            <button class="btn btn-copy" id="copyBtn">Copy</button>
+
+      <section class="about-info" id="about">
+        <div class="about-container">
+          <div class="info-card privacy-hero">
+            <div class="info-icon">🔒</div>
+            <div class="info-text">
+              <h2>Privacy First</h2>
+              <p>
+                Your database schemas very important. Do not paste them into
+                random tools on the internet! But Jacques was built with a
+                <strong>zero-trust architecture</strong>. Your SQL never leaves
+                your computer.
+              </p>
+              <div class="privacy-points">
+                <span
+                  >✓ All processed locally in the browser via WebAssembly</span
+                >
+                <span>✓ No data is sent to a server</span>
+                <span>✓ Your schema is never stored or logged</span>
+                <span>✓ Works offline once loaded</span>
+              </div>
+              <p class="github-cta">
+                <a
+                  href="https://github.com/doug-benn/Jacques"
+                  target="_blank"
+                  rel="noopener"
+                  >Please audit the source code on GitHub →</a
+                >
+              </p>
+            </div>
+          </div>
+
+          <div class="info-section">
+            <h2>What is Jacques?</h2>
+            <p>
+              Jacques is a specialized tool designed to "decontaminate" database
+              schema dumps. It transforms verbose dump files into clean,
+              readable, and developer-friendly SQL schemas.
+            </p>
+
+            <div class="use-cases">
+              <h3>Why use it?</h3>
+              <div class="use-case-grid">
+                <div class="use-case">
+                  <h4>Code Generation</h4>
+                  <p>
+                    Simplify your schema for tools like <strong>sqlc</strong>,
+                    <strong>JOOQ</strong>, or <strong>Ent</strong>. Inlined
+                    constraints and <code>SERIAL</code> types make for cleaner
+                    generated code.
+                  </p>
+                </div>
+                <div class="use-case">
+                  <h4>Migrations</h4>
+                  <p>
+                    Use decontaminated output as a baseline for new environments
+                    or as a clean starting point for migration tools.
+                  </p>
+                </div>
+                <div class="use-case">
+                  <h4>Version Control</h4>
+                  <p>
+                    Keep your <code>schema.sql</code> in Git without the noise
+                    of settings and session-specific configurations. Get clean,
+                    meaningful diffs every time.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="info-section">
+            <h2>Core Transformations</h2>
+            <div class="seo-grid">
+              <div>
+                <h3>Noise</h3>
+                <p>
+                  Jacques strips away <code>SET</code>, <code>GRANT</code>,
+                  <code>REVOKE</code>, and <code>OWNER TO</code> statements that
+                  clutter dumps but aren't needed for application development.
+                </p>
+              </div>
+              <div>
+                <h3>Structural Folding</h3>
+                <p>
+                  Constraints like <code>PRIMARY KEY</code>,
+                  <code>UNIQUE</code>, and <code>CHECK</code> are folded
+                  directly into <code>CREATE TABLE</code>, removing the need for
+                  a long trail of <code>ALTER TABLE</code> statements.
+                </p>
+              </div>
+              <div>
+                <h3>Intelligent Sequences</h3>
+                <p>
+                  Jacques identifies sequences used exclusively by a single
+                  column and converts them to <code>SERIAL</code>,
+                  <code>BIGSERIAL</code>, or <code>SMALLSERIAL</code> types
+                  automatically.
+                </p>
+              </div>
+              <div>
+                <h3>Smart Comments</h3>
+                <p>
+                  Jacques is quote-aware. It removes SQL comments while strictly
+                  preserving comments inside function bodies, strings, and
+                  quoted identifiers.
+                </p>
+              </div>
+              <div>
+                <h3>Identity & Generated Columns</h3>
+                <p>
+                  Full support for modern PostgreSQL features including
+                  <code>GENERATED ALWAYS AS IDENTITY</code> and
+                  <code>GENERATED ALWAYS AS (...) STORED</code> virtual columns.
+                </p>
+              </div>
+              <div>
+                <h3>Programmable Objects</h3>
+                <p>
+                  Preserves and cleans <code>CREATE FUNCTION</code>,
+                  <code>CREATE TRIGGER</code>, and Row Level Security
+                  (<code>RLS</code>) policies while normalizing schema prefixes.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="info-section technical-philosophy">
+            <h2>Technical Philosophy</h2>
+            <p>
+              Jacques is built on the principle of
+              <strong>Semantic Equivalence</strong>. Every transformation is
+              presentation-only; the database structure produced by the cleaned
+              SQL is identical to the original dump. A layered testing strategy
+              involving external diffing tools to prove this equivalence. If you
+              encounter any technical difficulties, please open an issue on
+              <a
+                href="https://github.com/doug-benn/Jacques"
+                target="_blank"
+                rel="noopener"
+                >GitHub →</a
+              >
+            </p>
+          </div>
+
+          <div class="info-section name-box">
+            <h3>Jacques?</h3>
+            <div>
+              <p>
+                "Jacques" is a referance to the French-accented cleaner shrimp
+                from
+                <a href="https://en.wikipedia.org/wiki/Finding_Nemo"
+                  >Finding Nemo,</a
+                >
+                who decontaminates Nemo when he first enters the dentist's
+                fishtank.
+              </p>
+              <p class="legal-note">Pixar/Disney, please don't sue me. 🦐</p>
+              <div class="name-gif">
+                <img
+                  src="jacques_he_is_clean.gif"
+                  alt="Jacques decontaminating gif"
+                  loading="lazy"
+                />
+              </div>
+            </div>
           </div>
         </div>
-        <textarea
-          id="output"
-          aria-label="Output"
-          readonly
-          placeholder="Decontaminated output will appear here..."
-        ></textarea>
-      </div>
+      </section>
     </main>
 
     <script src="./wasm_exec.js"></script>
-    <script>
-      let wasm = null;
-
-      async function init() {
-        try {
-          const go = new Go();
-          const result = await WebAssembly.instantiateStreaming(
-            fetch("main.wasm"),
-            go.importObject,
-          );
-          wasm = result.instance;
-          go.run(wasm);
-          document.getElementById("loading").classList.add("hidden");
-        } catch (err) {
-          document.getElementById("loading").textContent =
-            "Error loading WASM: " + err.message;
-          console.error(err);
-        }
-      }
-
-      function updateStatus(text) {
-        const statusEl = document.getElementById("status");
-        statusEl.textContent = text;
-        statusEl.className = "status";
-        if (text === "Voilà. It is clean.") {
-          statusEl.classList.add("done");
-        } else if (text === "Error") {
-          statusEl.classList.add("error");
-        }
-      }
-
-      function showToast(message, type = "") {
-        const toast = document.getElementById("toast");
-        toast.textContent = message;
-        toast.className = "toast show " + type;
-        setTimeout(() => {
-          toast.className = "toast";
-        }, 2000);
-      }
-
-      function clean() {
-        if (!window.ready || !window.ready()) {
-          updateStatus("Not ready...");
-          return;
-        }
-
-        const input = document.getElementById("input");
-        const output = document.getElementById("output");
-        const experimental = document.getElementById("experimental").checked;
-
-        if (!input.value.trim()) {
-          output.value = "";
-          output.classList.remove("error");
-          document.getElementById("status").textContent = "";
-          document.getElementById("status").className = "status";
-          return;
-        }
-
-        updateStatus("Decontaminating...");
-
-        requestAnimationFrame(() => {
-          try {
-            const result = window.cleanSchema(input.value, experimental);
-            output.value = result;
-            output.classList.remove("error");
-            updateStatus("Voilà. It is clean.");
-          } catch (err) {
-            output.value = "Error: " + err.message;
-            output.classList.add("error");
-            updateStatus("Error");
-            showToast("Error processing schema", "error");
-            console.error(err);
-          }
-        });
-      }
-
-      function copyOutput() {
-        const output = document.getElementById("output");
-        if (!output.value) {
-          showToast("Nothing to copy", "error");
-          return;
-        }
-        navigator.clipboard
-          .writeText(output.value)
-          .then(() => {
-            showToast("Copied to clipboard!", "success");
-          })
-          .catch((err) => {
-            showToast("Failed to copy", "error");
-            console.error(err);
-          });
-      }
-
-      function clearAll() {
-        document.getElementById("input").value = "";
-        document.getElementById("output").value = "";
-        document.getElementById("output").classList.remove("error");
-        updateStatus("");
-      }
-
-      let debounceTimer;
-      const inputEl = document.getElementById("input");
-      const experimentalEl = document.getElementById("experimental");
-      const copyBtn = document.getElementById("copyBtn");
-      const clearBtn = document.getElementById("clearBtn");
-
-      inputEl.addEventListener("input", () => {
-        updateStatus("Decontaminating...");
-        clearTimeout(debounceTimer);
-        debounceTimer = setTimeout(clean, 150);
-      });
-
-      experimentalEl.addEventListener("change", () => {
-        updateStatus("Decontaminating...");
-        clean();
-      });
-
-      copyBtn.addEventListener("click", copyOutput);
-      clearBtn.addEventListener("click", clearAll);
-
-      // Keyboard shortcuts
-      document.addEventListener("keydown", (e) => {
-        // Ctrl/Cmd + Enter to process
-        if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
-          clean();
-        }
-        // Ctrl/Cmd + Shift + C to copy
-        if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === "C") {
-          copyOutput();
-        }
-      });
-
-      document.addEventListener("click", function (event) {
-        const aboutDropdown = document.querySelector(".about-dropdown");
-        const privacyDropdown = document.querySelector(".privacy-dropdown");
-
-        if (aboutDropdown && !aboutDropdown.contains(event.target)) {
-          aboutDropdown.removeAttribute("open");
-        }
-        if (privacyDropdown && !privacyDropdown.contains(event.target)) {
-          privacyDropdown.removeAttribute("open");
-        }
-      });
-
-      const resizeHandle = document.querySelector(".resize-handle");
-      const container = document.querySelector(".container");
-      const panels = container.querySelectorAll(".panel");
-      const leftPanel = panels[0];
-      const rightPanel = panels[panels.length - 1];
-      let isResizing = false;
-
-      resizeHandle.addEventListener("mousedown", (e) => {
-        isResizing = true;
-        document.body.style.cursor = "col-resize";
-      });
-
-      document.addEventListener("mousemove", (e) => {
-        if (!isResizing) return;
-
-        const containerRect = container.getBoundingClientRect();
-        const handleWidth = resizeHandle.offsetWidth;
-
-        const style = window.getComputedStyle(container);
-        const paddingLeft = parseInt(style.paddingLeft) || 0;
-        const paddingRight = parseInt(style.paddingRight) || 0;
-        const paddingTotal = paddingLeft + paddingRight;
-
-        const availableWidth = containerRect.width - paddingTotal - handleWidth;
-        const contentLeft = containerRect.left + paddingLeft;
-        const newLeftWidth = e.clientX - contentLeft - handleWidth / 2;
-
-        let percentage = (newLeftWidth / availableWidth) * 100;
-
-        percentage = Math.max(10, Math.min(90, percentage));
-
-        leftPanel.style.flex = `0 0 ${percentage}%`;
-        rightPanel.style.flex = `0 0 ${100 - percentage}%`;
-      });
-
-      document.addEventListener("mouseup", () => {
-        isResizing = false;
-        document.body.style.cursor = "";
-      });
-
-      init();
-    </script>
+    <script src="./app.js"></script>
+    <div id="toast" class="toast"></div>
   </body>
 </html>
