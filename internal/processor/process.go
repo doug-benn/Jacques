@@ -460,7 +460,7 @@ func extractFunctionBody(stmt string) string {
 	if dollarMatch != nil {
 		return dollarMatch[1]
 	}
-	dollarTagMatch := regexp.MustCompile(`(?s)\$(\w+)\$(.*?)\\\1\\\$`).FindStringSubmatch(stmt)
+	dollarTagMatch := regexp.MustCompile(`(?s)\$(\w+)\$(.*?)\\1\$`).FindStringSubmatch(stmt)
 	if dollarTagMatch != nil {
 		return dollarTagMatch[2]
 	}
