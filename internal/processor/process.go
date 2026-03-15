@@ -48,7 +48,6 @@ var createTypeDomainSchemaRE = regexp.MustCompile(`(?m)^CREATE (TYPE|DOMAIN|SCHE
 var createDomainWithCheckRE = regexp.MustCompile(`(?i)^CREATE\s+DOMAIN[\s\S]*?CHECK`)
 var createCompositeTypeRE = regexp.MustCompile(`(?m)^CREATE\s+TYPE\s+.*\s+AS\s+\(`)
 var partitionOfRE = regexp.MustCompile(`(?i)^CREATE\s+TABLE\s+.*\s+PARTITION\s+OF\s+`)
-var blockCommentRE = regexp.MustCompile(`(?s)/\*.*?\*/`)
 var dropRE = regexp.MustCompile(`(?i)^DROP\s+(TABLE|INDEX|SEQUENCE|VIEW|MATERIALIZED\s+VIEW)\s+(IF\s+EXISTS\s+)?(\S+)`)
 var schemaRE = regexp.MustCompile(`(?i)^CREATE\s+SCHEMA\s+(?:IF\s+NOT\s+EXISTS\s+)?(` + identifierRE + `)`)
 var cacheRE = regexp.MustCompile(`(?i)\bCACHE\s+(\d+)\b`)
@@ -461,7 +460,7 @@ func extractFunctionBody(stmt string) string {
 	if dollarMatch != nil {
 		return dollarMatch[1]
 	}
-	dollarTagMatch := regexp.MustCompile(`(?s)\$(\w+)\$(.*?)\$\1\$`).FindStringSubmatch(stmt)
+	dollarTagMatch := regexp.MustCompile(`(?s)\$(\w+)\$(.*?)\\\1\\\$`).FindStringSubmatch(stmt)
 	if dollarTagMatch != nil {
 		return dollarTagMatch[2]
 	}
@@ -938,10 +937,6 @@ func preprocessSQL(sql string) string {
 	}
 
 	return result.String()
-}
-
-func isAlphaNum(c byte) bool {
-	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_'
 }
 
 // buildImplicitIndexMap builds a map of table.columns that have implicit indexes
