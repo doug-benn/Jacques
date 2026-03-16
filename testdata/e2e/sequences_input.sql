@@ -1,182 +1,132 @@
--- Test fixture for sequence handling
--- Covers: shared sequences, SERIAL conversion, sequence preservation, edge cases
---
+-- Test fixture for identity and sequences
 -- Transformations tested:
---   - Dedicated sequence → BIGSERIAL conversion
---   - Dedicated sequence → SERIAL conversion
---   - Dedicated sequence → SMALLSERIAL conversion
+--   - Dedicated sequence → BIGSERIAL/SERIAL/SMALLSERIAL conversion
 --   - Shared sequence → preserved (not converted)
---
--- Edge cases tested:
---   - Sequence with explicit START WITH
---   - Sequence with explicit INCREMENT BY
---   - Sequence without OWNED BY
---   - Sequence with MINVALUE/MAXVALUE
---
--- Negative tests (should NOT be converted):
---   - Sequence with CACHE > 1 (could have gaps)
+--   - Identity columns (GENERATED ALWAYS/BY DEFAULT)
+--   - Sequence options (START WITH, CACHE, CYCLE, etc.)
+--   - nextval normalization
 
 -- ============================================
--- Shared sequence - used by multiple tables, should be preserved
+-- 1. Shared sequence (preserved)
 -- ============================================
-CREATE SEQUENCE global_id_seq START WITH 1 INCREMENT BY 1 NO MAXVALUE CACHE 1;
+CREATE SEQUENCE shared_seq START WITH 1 INCREMENT BY 1 NO MAXVALUE CACHE 1;
 
--- Table using shared sequence - should preserve sequence (not convert to SERIAL)
-CREATE TABLE public.orders (
-    id bigint NOT NULL,
-    user_id bigint NOT NULL,
-    total numeric(10,2) NOT NULL DEFAULT 0,
-    created_at timestamp without time zone NOT NULL DEFAULT NOW()
+CREATE TABLE shared_table_1 (
+    id bigint NOT NULL DEFAULT nextval('shared_seq'::regclass)
 );
+ALTER TABLE ONLY shared_table_1 ADD PRIMARY KEY (id);
 
-ALTER TABLE public.orders ALTER COLUMN id
-    SET DEFAULT nextval('global_id_seq'::regclass);
-
-ALTER TABLE ONLY public.orders
-    ADD CONSTRAINT orders_pkey PRIMARY KEY (id);
-
--- Table using shared sequence for order_items
-CREATE TABLE public.order_items (
-    id bigint NOT NULL,
-    order_id bigint NOT NULL,
-    product_id bigint NOT NULL,
-    quantity integer NOT NULL DEFAULT 1
+CREATE TABLE shared_table_2 (
+    id bigint NOT NULL DEFAULT nextval('shared_seq'::regclass)
 );
-
-ALTER TABLE public.order_items ALTER COLUMN id
-    SET DEFAULT nextval('global_id_seq'::regclass);
-
-ALTER TABLE ONLY public.order_items
-    ADD CONSTRAINT order_items_pkey PRIMARY KEY (id);
-
--- Another table using the same shared sequence
-CREATE TABLE public.products (
-    id bigint NOT NULL,
-    name text NOT NULL,
-    price numeric(10,2) NOT NULL
-);
-
-ALTER TABLE public.products ALTER COLUMN id
-    SET DEFAULT nextval('global_id_seq'::regclass);
-
-ALTER TABLE ONLY public.products
-    ADD CONSTRAINT products_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY shared_table_2 ADD PRIMARY KEY (id);
 
 -- ============================================
--- Dedicated sequences - should convert to SERIAL types
+-- 2. Dedicated sequences (convert to SERIAL)
 -- ============================================
-
--- Table with dedicated sequence - should convert to BIGSERIAL
-CREATE TABLE public.users (
-    id bigint NOT NULL,
-    email text NOT NULL,
-    created_at timestamp without time zone NOT NULL DEFAULT NOW()
+CREATE TABLE serial_types (
+    id_big bigint NOT NULL,
+    id_reg integer NOT NULL,
+    id_small smallint NOT NULL
 );
+ALTER TABLE ONLY serial_types ADD PRIMARY KEY (id_big);
 
-CREATE SEQUENCE public.users_id_seq
-    START WITH 1 INCREMENT BY 1 NO MINVALUE NO MAXVALUE CACHE 1;
+CREATE SEQUENCE seq_big OWNED BY serial_types.id_big;
+CREATE SEQUENCE seq_reg OWNED BY serial_types.id_reg;
+CREATE SEQUENCE seq_small OWNED BY serial_types.id_small;
 
-ALTER SEQUENCE public.users_id_seq OWNED BY public.users.id;
-
-ALTER TABLE public.users ALTER COLUMN id
-    SET DEFAULT nextval('public.users_id_seq'::regclass);
-
-ALTER TABLE ONLY public.users
-    ADD CONSTRAINT users_pkey PRIMARY KEY (id);
-
-ALTER TABLE ONLY public.users
-    ADD CONSTRAINT users_email_key UNIQUE (email);
-
--- Table using integer with dedicated sequence - should convert to SERIAL
-CREATE TABLE public.accounts (
-    id integer NOT NULL,
-    name text NOT NULL
-);
-
-CREATE SEQUENCE public.accounts_id_seq
-    START WITH 1 INCREMENT BY 1 NO MINVALUE NO MAXVALUE CACHE 1;
-
-ALTER SEQUENCE public.accounts_id_seq OWNED BY public.accounts.id;
-
-ALTER TABLE public.accounts ALTER COLUMN id
-    SET DEFAULT nextval('public.accounts_id_seq'::regclass);
-
-ALTER TABLE ONLY public.accounts
-    ADD CONSTRAINT accounts_pkey PRIMARY KEY (id);
-
--- Table using smallint with dedicated sequence - should convert to SMALLSERIAL
-CREATE TABLE public.tags (
-    id smallint NOT NULL,
-    name text NOT NULL
-);
-
-CREATE SEQUENCE public.tags_id_seq
-    START WITH 1 INCREMENT BY 1 NO MINVALUE NO MAXVALUE CACHE 1;
-
-ALTER SEQUENCE public.tags_id_seq OWNED BY public.tags.id;
-
-ALTER TABLE public.tags ALTER COLUMN id
-    SET DEFAULT nextval('public.tags_id_seq'::regclass);
-
-ALTER TABLE ONLY public.tags
-    ADD CONSTRAINT tags_pkey PRIMARY KEY (id);
+ALTER TABLE serial_types ALTER COLUMN id_big SET DEFAULT nextval('seq_big');
+ALTER TABLE serial_types ALTER COLUMN id_reg SET DEFAULT nextval('seq_reg');
+ALTER TABLE serial_types ALTER COLUMN id_small SET DEFAULT nextval('seq_small');
 
 -- ============================================
--- Edge cases for sequence handling
+-- 3. Identity Columns
 -- ============================================
+CREATE TABLE identity_test (
+    id_always bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    id_default bigint GENERATED BY DEFAULT AS IDENTITY,
+    id_options integer GENERATED ALWAYS AS IDENTITY (START WITH 100 INCREMENT BY 10)
+);
 
--- Edge case: Sequence with explicit START WITH (should convert)
-CREATE SEQUENCE public.custom_start_seq
+-- ============================================
+-- 4. Sequence Options & ALTER SEQUENCE
+-- ============================================
+CREATE SEQUENCE complex_seq
     START WITH 1000
-    INCREMENT BY 10
-    NO MAXVALUE
-    CACHE 1;
-
-CREATE TABLE public.custom_seq_table (
-    id bigint NOT NULL
-);
-
-ALTER SEQUENCE public.custom_start_seq OWNED BY public.custom_seq_table.id;
-ALTER TABLE public.custom_seq_table ALTER COLUMN id SET DEFAULT nextval('public.custom_start_seq');
-
--- Edge case: Sequence without explicit OWNED BY (should convert)
-CREATE SEQUENCE public.unowned_seq;
-
-CREATE TABLE public.unowned_table (
-    id bigint NOT NULL DEFAULT nextval('public.unowned_seq'::regclass)
-);
-
--- Edge case: Sequence with MINVALUE/MAXVALUE (should convert)
-CREATE SEQUENCE public.bounded_seq
-    START WITH 1
     INCREMENT BY 1
     MINVALUE 1
-    MAXVALUE 1000000
-    CACHE 1;
+    MAXVALUE 999999999
+    CACHE 10;
 
-CREATE TABLE public.bounded_table (
-    id bigint NOT NULL
+CREATE TABLE complex_seq_table (
+    id bigint NOT NULL DEFAULT nextval('complex_seq'::regclass) PRIMARY KEY
 );
 
-ALTER SEQUENCE public.bounded_seq OWNED BY public.bounded_table.id;
-ALTER TABLE public.bounded_table ALTER COLUMN id SET DEFAULT nextval('public.bounded_seq'::regclass);
+ALTER SEQUENCE complex_seq RESTART WITH 2000;
 
--- Negative test: Sequence with CACHE > 1 (should NOT convert - could have gaps)
-CREATE SEQUENCE public.cached_seq
+-- Sequence with CYCLE
+CREATE SEQUENCE cycle_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
-    CACHE 100;
+    CACHE 5
+    CYCLE;
 
-CREATE TABLE public.cached_table (
-    id bigint NOT NULL
+CREATE TABLE cycle_table (
+    id bigint NOT NULL DEFAULT nextval('cycle_seq'::regclass) PRIMARY KEY
 );
 
-ALTER SEQUENCE public.cached_seq OWNED BY public.cached_table.id;
-ALTER TABLE public.cached_table ALTER COLUMN id SET DEFAULT nextval('public.cached_seq'::regclass);
+ALTER SEQUENCE cycle_seq INCREMENT BY 2;
 
--- Ensure tables have PKs
-ALTER TABLE ONLY public.custom_seq_table ADD CONSTRAINT custom_seq_table_pkey PRIMARY KEY (id);
-ALTER TABLE ONLY public.unowned_table ADD CONSTRAINT unowned_table_pkey PRIMARY KEY (id);
-ALTER TABLE ONLY public.bounded_table ADD CONSTRAINT bounded_table_pkey PRIMARY KEY (id);
-ALTER TABLE ONLY public.cached_table ADD CONSTRAINT cached_table_pkey PRIMARY KEY (id);
+-- ============================================
+-- 5. Sequences used in triggers
+-- ============================================
+-- Case A: Single table via trigger - should convert to SERIAL
+CREATE TABLE trigger_seq_single (
+    id bigint NOT NULL PRIMARY KEY
+);
+CREATE SEQUENCE trigger_seq_single_id_seq OWNED BY trigger_seq_single.id;
+
+CREATE FUNCTION set_trigger_single_id() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    NEW.id := nextval('trigger_seq_single_id_seq'::regclass);
+    RETURN NEW;
+END
+$$;
+
+CREATE TRIGGER trg_single
+    BEFORE INSERT ON trigger_seq_single
+    FOR EACH ROW
+    EXECUTE FUNCTION set_trigger_single_id();
+
+-- Case B: Multiple tables via triggers - should keep standalone
+CREATE TABLE trigger_table_a (
+    id bigint NOT NULL PRIMARY KEY
+);
+CREATE TABLE trigger_table_b (
+    id bigint NOT NULL PRIMARY KEY
+);
+CREATE SEQUENCE shared_trigger_seq OWNED BY trigger_table_a.id;
+
+CREATE FUNCTION set_shared_id_a() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    NEW.id := nextval('shared_trigger_seq'::regclass);
+    RETURN NEW;
+END
+$$;
+
+CREATE FUNCTION set_shared_id_b() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    NEW.id := nextval('shared_trigger_seq'::regclass);
+    RETURN NEW;
+END
+$$;
+
+CREATE TRIGGER trg_a
+    BEFORE INSERT ON trigger_table_a
+    FOR EACH ROW
+    EXECUTE FUNCTION set_shared_id_a();
+
+CREATE TRIGGER trg_b
+    BEFORE INSERT ON trigger_table_b
+    FOR EACH ROW
+    EXECUTE FUNCTION set_shared_id_b();

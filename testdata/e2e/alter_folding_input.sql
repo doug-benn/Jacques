@@ -1,165 +1,89 @@
--- Test fixture for ALTER folding
+-- Test fixture for structural folding
 -- Transformations tested:
---   - PRIMARY KEY constraint folded into CREATE TABLE
---   - UNIQUE constraint folded into CREATE TABLE
---   - CHECK constraint folded into CREATE TABLE
---
--- Edge cases tested:
---   - Inline NOT NULL preserved
---   - CHECK with complex expression
---   - Multiple constraints on same column
---
--- Negative tests (should NOT be folded):
---   - DEFERRABLE constraints
---   - INITIALLY DEFERRED constraints
---   - USING clause
+--   - PRIMARY KEY, UNIQUE, CHECK, EXCLUDE folded into CREATE TABLE
+--   - Foreign Key inlining (including actions and MATCH)
+--   - Table Inheritance preservation
 
--- Table with separate PRIMARY KEY (should fold)
-CREATE TABLE public.users (
-    id bigint NOT NULL,
-    email text,
-    name text NOT NULL
-);
-
-ALTER TABLE ONLY public.users
-    ADD CONSTRAINT users_pkey PRIMARY KEY (id);
-
--- Table with separate UNIQUE constraint (should fold)
-CREATE TABLE public.products (
+-- ============================================
+-- 1. Basic Constraints & Deferrability
+-- ============================================
+CREATE TABLE folding_basics (
     id bigint NOT NULL,
     sku text NOT NULL,
+    user_id bigint NOT NULL,
+    order_number text NOT NULL,
+    balance numeric(10,2) NOT NULL,
+    id_defer bigint NOT NULL,
+    email_defer text NOT NULL
+);
+
+ALTER TABLE ONLY folding_basics ADD CONSTRAINT folding_basics_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY folding_basics ADD CONSTRAINT folding_basics_sku_key UNIQUE (sku);
+ALTER TABLE ONLY folding_basics ADD CONSTRAINT folding_basics_multi_unique UNIQUE (user_id, order_number);
+ALTER TABLE ONLY folding_basics ADD CONSTRAINT folding_basics_balance_check CHECK (balance >= 0);
+-- Deferrable PK
+ALTER TABLE ONLY folding_basics ADD CONSTRAINT defer_pkey PRIMARY KEY (id_defer) DEFERRABLE;
+-- Deferrable Unique
+ALTER TABLE ONLY folding_basics ADD CONSTRAINT defer_unique UNIQUE (email_defer) DEFERRABLE INITIALLY DEFERRED;
+
+-- ============================================
+-- 2. Exclusion Constraints & USING Clause
+-- ============================================
+CREATE TABLE folding_exclude (
+    id bigint NOT NULL,
+    room_id bigint NOT NULL,
+    booking_date date NOT NULL,
+    val text
+);
+
+ALTER TABLE ONLY folding_exclude ADD PRIMARY KEY (id) USING btree;
+ALTER TABLE ONLY folding_exclude ADD CONSTRAINT no_double_booking EXCLUDE USING btree (room_id WITH =, booking_date WITH =);
+ALTER TABLE ONLY folding_exclude ADD CONSTRAINT partial_exclude EXCLUDE USING btree (room_id WITH =) WHERE (val IS NOT NULL);
+
+-- ============================================
+-- 3. Foreign Keys (Inlining & Actions)
+-- ============================================
+CREATE TABLE fk_parent (
+    id bigint PRIMARY KEY
+);
+
+CREATE TABLE fk_child (
+    id bigint PRIMARY KEY,
+    parent_id bigint,
+    col_cascade bigint NOT NULL,
+    col_match_full bigint,
+    col_set_null bigint,
+    col_set_default bigint
+);
+
+-- Simple inlining
+ALTER TABLE ONLY fk_child ADD CONSTRAINT simple_fkey FOREIGN KEY (parent_id) REFERENCES fk_parent(id);
+-- Inlining with action
+ALTER TABLE ONLY fk_child ADD CONSTRAINT cascade_fkey FOREIGN KEY (col_cascade) REFERENCES fk_parent(id) ON DELETE CASCADE;
+-- Inlining with MATCH
+ALTER TABLE ONLY fk_child ADD CONSTRAINT match_fkey FOREIGN KEY (col_match_full) REFERENCES fk_parent(id) MATCH FULL;
+-- Inlining with ON DELETE SET NULL ON UPDATE SET NULL
+ALTER TABLE ONLY fk_child ADD CONSTRAINT set_null_fkey FOREIGN KEY (col_set_null) REFERENCES fk_parent(id) ON DELETE SET NULL ON UPDATE SET NULL;
+-- Inlining with ON DELETE SET DEFAULT ON UPDATE SET DEFAULT
+ALTER TABLE ONLY fk_child ADD CONSTRAINT set_default_fkey FOREIGN KEY (col_set_default) REFERENCES fk_parent(id) ON DELETE SET DEFAULT ON UPDATE SET DEFAULT;
+
+-- Self-referential (passes through)
+ALTER TABLE ONLY fk_child ADD CONSTRAINT self_fkey FOREIGN KEY (id) REFERENCES fk_child(id);
+
+-- ============================================
+-- 4. Inheritance
+-- ============================================
+CREATE TABLE parent_table (
+    id bigint PRIMARY KEY,
     name text NOT NULL
 );
 
-ALTER TABLE ONLY public.products
-    ADD CONSTRAINT products_pkey PRIMARY KEY (id);
+-- Basic inheritance
+CREATE TABLE child_table (
+    val text
+) INHERITS (parent_table);
 
-ALTER TABLE ONLY public.products
-    ADD CONSTRAINT products_sku_key UNIQUE (sku);
-
--- Table with multi-column UNIQUE constraint (should fold)
-CREATE TABLE public.orders (
-    id bigint NOT NULL,
-    user_id bigint NOT NULL,
-    order_number text NOT NULL
-);
-
-ALTER TABLE ONLY public.orders
-    ADD CONSTRAINT orders_pkey PRIMARY KEY (id);
-
-ALTER TABLE ONLY public.orders
-    ADD CONSTRAINT orders_user_order_number_key UNIQUE (user_id, order_number);
-
--- Table with CHECK constraint (should fold)
-CREATE TABLE public.accounts (
-    id bigint NOT NULL,
-    balance numeric(10,2) NOT NULL,
-    status text NOT NULL DEFAULT 'active'
-);
-
-ALTER TABLE ONLY public.accounts
-    ADD CONSTRAINT accounts_pkey PRIMARY KEY (id);
-
-ALTER TABLE ONLY public.accounts
-    ADD CONSTRAINT accounts_balance_check CHECK (balance >= 0);
-
-ALTER TABLE ONLY public.accounts
-    ADD CONSTRAINT accounts_status_check CHECK (status IN ('active', 'inactive', 'suspended'));
-
--- Table with multiple CHECK constraints (should all fold)
-CREATE TABLE public.inventories (
-    id bigint NOT NULL,
-    product_id bigint NOT NULL,
-    quantity integer NOT NULL,
-    reorder_point integer NOT NULL
-);
-
-ALTER TABLE ONLY public.inventories
-    ADD CONSTRAINT inventories_pkey PRIMARY KEY (id);
-
-ALTER TABLE ONLY public.inventories
-    ADD CONSTRAINT inventories_quantity_check CHECK (quantity >= 0);
-
-ALTER TABLE ONLY public.inventories
-    ADD CONSTRAINT inventories_reorder_check CHECK (reorder_point >= 0);
-
-ALTER TABLE ONLY public.inventories
-    ADD CONSTRAINT inventories_reorder_quantity_check CHECK (reorder_point <= quantity);
-
--- ============================================
--- Edge cases for ALTER folding
--- ============================================
-
--- Edge case: Table with inline NOT NULL (should preserve)
-CREATE TABLE public.inline_notnull (
-    id bigint NOT NULL,
-    name text NOT NULL,
-    email text NOT NULL
-);
-
-ALTER TABLE ONLY public.inline_notnull
-    ADD CONSTRAINT inline_notnull_pkey PRIMARY KEY (id);
-
-ALTER TABLE ONLY public.inline_notnull
-    ADD CONSTRAINT inline_notnull_email_key UNIQUE (email);
-
--- Edge case: CHECK with complex expression (should fold)
-CREATE TABLE public.complex_check (
-    id bigint NOT NULL,
-    price numeric(10,2) NOT NULL,
-    discount numeric(10,2) NOT NULL,
-    final_price numeric(10,2) NOT NULL
-);
-
-ALTER TABLE ONLY public.complex_check
-    ADD CONSTRAINT complex_check_pkey PRIMARY KEY (id);
-
-ALTER TABLE ONLY public.complex_check
-    ADD CONSTRAINT complex_check_price_check CHECK (price >= 0 AND price < 10000);
-
-ALTER TABLE ONLY public.complex_check
-    ADD CONSTRAINT complex_check_final_check CHECK (final_price = price - discount);
-
--- Edge case: Multiple constraints on same column
-CREATE TABLE public.multi_constraint (
-    id bigint NOT NULL,
-    code text NOT NULL
-);
-
-ALTER TABLE ONLY public.multi_constraint
-    ADD CONSTRAINT multi_constraint_pkey PRIMARY KEY (id);
-
-ALTER TABLE ONLY public.multi_constraint
-    ADD CONSTRAINT multi_constraint_code_key UNIQUE (code);
-
--- Negative test: DEFERRABLE constraint (should NOT fold - pass through)
-CREATE TABLE public.deferrable_unique (
-    id bigint NOT NULL,
-    email text NOT NULL
-);
-
-ALTER TABLE ONLY public.deferrable_unique
-    ADD CONSTRAINT deferrable_unique_pkey PRIMARY KEY (id);
-
-ALTER TABLE ONLY public.deferrable_unique
-    ADD CONSTRAINT deferrable_unique_email_key UNIQUE (email) DEFERRABLE INITIALLY DEFERRED;
-
--- Negative test: NOT DEFERRABLE (should fold - same as default)
-CREATE TABLE public.not_deferrable_unique (
-    id bigint NOT NULL,
-    email text NOT NULL
-);
-
-ALTER TABLE ONLY public.not_deferrable_unique
-    ADD CONSTRAINT not_deferrable_unique_pkey PRIMARY KEY (id);
-
-ALTER TABLE ONLY public.not_deferrable_unique
-    ADD CONSTRAINT not_deferrable_unique_email_key UNIQUE (email) NOT DEFERRABLE;
-
--- Test case: USING clause (should fold into CREATE TABLE)
-CREATE TABLE public.using_clause (
-    id bigint NOT NULL
-);
-
-ALTER TABLE ONLY public.using_clause
-    ADD CONSTRAINT using_clause_pkey PRIMARY KEY (id) USING btree;
+-- ONLY removal in INHERITS
+CREATE TABLE only_child (
+    val text
+) INHERITS (ONLY parent_table);

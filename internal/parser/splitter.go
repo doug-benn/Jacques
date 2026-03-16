@@ -27,6 +27,14 @@ func SkipBlockComment(sql string, i int) (string, int) {
 	return sql[i : i+end+4], i + end + 4
 }
 
+func ExtractDollarTag(sql string, i int) string {
+	if i >= len(sql) || sql[i] != '$' {
+		return ""
+	}
+	m := regexp.MustCompile(`^\$([A-Za-z_][A-Za-z_0-9]*)?\$`).FindString(sql[i:])
+	return m
+}
+
 func FindDollarQuoteEnd(sql string, i int) (int, string) {
 	if i >= len(sql) || sql[i] != '$' {
 		return -1, ""
@@ -62,6 +70,23 @@ func FindSingleQuoteEnd(sql string, i int) int {
 	return -1
 }
 
+func findDoubleQuoteEnd(sql string, i int) int {
+	if i >= len(sql) || sql[i] != '"' {
+		return -1
+	}
+	n := len(sql)
+	for j := i + 1; j < n; j++ {
+		if sql[j] == '"' {
+			if j+1 < n && sql[j+1] == '"' {
+				j++
+				continue
+			}
+			return j + 1
+		}
+	}
+	return -1
+}
+
 func SplitStatements(sql string) []string {
 	statements := []string{}
 	current := strings.Builder{}
@@ -87,6 +112,11 @@ func SplitStatements(sql string) []string {
 		}
 
 		if consumed, newI := handleSingleQuote(sql, i, n, &current); consumed {
+			i = newI
+			continue
+		}
+
+		if consumed, newI := handleDoubleQuote(sql, i, &current); consumed {
 			i = newI
 			continue
 		}
@@ -173,5 +203,19 @@ func handleSingleQuote(sql string, i, n int, current *strings.Builder) (bool, in
 	} else {
 		current.WriteString(sql[i:])
 		return true, n
+	}
+}
+
+func handleDoubleQuote(sql string, i int, current *strings.Builder) (bool, int) {
+	if i >= len(sql) || sql[i] != '"' {
+		return false, i
+	}
+	endI := findDoubleQuoteEnd(sql, i)
+	if endI != -1 {
+		current.WriteString(sql[i:endI])
+		return true, endI
+	} else {
+		current.WriteString(sql[i:])
+		return true, len(sql)
 	}
 }

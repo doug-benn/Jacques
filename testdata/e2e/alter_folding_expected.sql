@@ -1,70 +1,48 @@
-CREATE TABLE users (
-    id bigint PRIMARY KEY,
-    email text,
-    name text NOT NULL
-);
-
-CREATE TABLE products (
+CREATE TABLE folding_basics (
     id bigint PRIMARY KEY,
     sku text NOT NULL UNIQUE,
+    user_id bigint NOT NULL,
+    order_number text NOT NULL,
+    balance numeric(10,2) NOT NULL,
+    id_defer bigint PRIMARY KEY DEFERRABLE,
+    email_defer text NOT NULL UNIQUE DEFERRABLE INITIALLY DEFERRED,
+    UNIQUE (user_id, order_number),
+    CHECK (balance >= 0)
+);
+
+CREATE TABLE folding_exclude (
+    id bigint PRIMARY KEY USING btree,
+    room_id bigint NOT NULL,
+    booking_date date NOT NULL,
+    val text,
+    CONSTRAINT no_double_booking EXCLUDE USING btree (room_id WITH =, booking_date WITH =),
+    CONSTRAINT partial_exclude EXCLUDE USING btree (room_id WITH =) WHERE (val IS NOT NULL)
+);
+
+CREATE TABLE fk_parent (
+    id bigint PRIMARY KEY
+);
+
+CREATE TABLE fk_child (
+    id bigint PRIMARY KEY,
+    parent_id bigint REFERENCES fk_parent(id),
+    col_cascade bigint REFERENCES fk_parent(id) ON DELETE CASCADE NOT NULL,
+    col_match_full bigint REFERENCES fk_parent(id) MATCH FULL,
+    col_set_null bigint REFERENCES fk_parent(id) ON DELETE SET NULL ON UPDATE SET NULL,
+    col_set_default bigint REFERENCES fk_parent(id) ON DELETE SET DEFAULT ON UPDATE SET DEFAULT
+);
+
+CREATE TABLE parent_table (
+    id bigint PRIMARY KEY,
     name text NOT NULL
 );
 
-CREATE TABLE orders (
-    id bigint PRIMARY KEY,
-    user_id bigint NOT NULL,
-    order_number text NOT NULL,
-    UNIQUE (user_id, order_number)
-);
+CREATE TABLE child_table (
+    val text
+) INHERITS (parent_table);
 
-CREATE TABLE accounts (
-    id bigint PRIMARY KEY,
-    balance numeric(10,2) NOT NULL,
-    status text NOT NULL DEFAULT 'active',
-    CONSTRAINT accounts_balance_check CHECK (balance >= 0),
-    CONSTRAINT accounts_status_check CHECK (status IN ('active', 'inactive', 'suspended'))
-);
+CREATE TABLE only_child (
+    val text
+) INHERITS (parent_table);
 
-CREATE TABLE inventories (
-    id bigint PRIMARY KEY,
-    product_id bigint NOT NULL,
-    quantity integer NOT NULL,
-    reorder_point integer NOT NULL,
-    CONSTRAINT inventories_quantity_check CHECK (quantity >= 0),
-    CONSTRAINT inventories_reorder_check CHECK (reorder_point >= 0),
-    CONSTRAINT inventories_reorder_quantity_check CHECK (reorder_point <= quantity)
-);
-
-CREATE TABLE inline_notnull (
-    id bigint PRIMARY KEY,
-    name text NOT NULL,
-    email text NOT NULL UNIQUE
-);
-
-CREATE TABLE complex_check (
-    id bigint PRIMARY KEY,
-    price numeric(10,2) NOT NULL,
-    discount numeric(10,2) NOT NULL,
-    final_price numeric(10,2) NOT NULL,
-    CONSTRAINT complex_check_price_check CHECK (price >= 0 AND price < 10000),
-    CONSTRAINT complex_check_final_check CHECK (final_price = price - discount)
-);
-
-CREATE TABLE multi_constraint (
-    id bigint PRIMARY KEY,
-    code text NOT NULL UNIQUE
-);
-
-CREATE TABLE deferrable_unique (
-    id bigint PRIMARY KEY DEFERRABLE,
-    email text NOT NULL UNIQUE DEFERRABLE INITIALLY DEFERRED
-);
-
-CREATE TABLE not_deferrable_unique (
-    id bigint PRIMARY KEY,
-    email text NOT NULL UNIQUE
-);
-
-CREATE TABLE using_clause (
-    id bigint PRIMARY KEY USING btree
-);
+ALTER TABLE fk_child ADD CONSTRAINT self_fkey FOREIGN KEY (id) REFERENCES fk_child(id);

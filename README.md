@@ -1,6 +1,6 @@
 # Jacques - Schema decontamination
 
-![Jacques decontaminating](jacques_he_is_clean.gif)
+![Jacques decontaminating](/web/jacques_he_is_clean.gif)
 
 _"Voilà. He is clean."_ - Jacques (Finding Nemo)
 

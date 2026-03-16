@@ -38,19 +38,19 @@ var alterSeqOwnedBy = regexp.MustCompile(`(?i)^ALTER\s+SEQUENCE\b.*\bOWNED\s+BY\
 var setDefaultRE = regexp.MustCompile(`^ALTER\s+TABLE\s+(?:ONLY\s+)?(?:(` + identifierRE + `)\.)?(` + identifierRE + `)\s+ALTER\s+COLUMN\s+(` + identifierRE + `)\s+SET\s+DEFAULT\s+(.*)`)
 var setNotNullRE = regexp.MustCompile(`^ALTER\s+TABLE\s+(?:ONLY\s+)?(?:(` + identifierRE + `)\.)?(` + identifierRE + `)\s+ALTER\s+COLUMN\s+(` + identifierRE + `)\s+SET\s+NOT\s+NULL\b`)
 var setTypeRE = regexp.MustCompile(`^ALTER\s+TABLE\s+(?:ONLY\s+)?(?:(` + identifierRE + `)\.)?(` + identifierRE + `)\s+ALTER\s+COLUMN\s+(` + identifierRE + `)\s+(?:SET\s+DATA\s+)?TYPE\s+(.*)`)
-var addPKRE = regexp.MustCompile(`^ALTER\s+TABLE\s+(?:ONLY\s+)?(?:(` + identifierRE + `)\.)?(` + identifierRE + `)\s+ADD\s+CONSTRAINT\s+(?:"[^"]+"|\S+)\s+PRIMARY\s+KEY\s*\(([^)]+)\)`)
-var addUniqueRE = regexp.MustCompile(`^ALTER\s+TABLE\s+(?:ONLY\s+)?(?:(` + identifierRE + `)\.)?(` + identifierRE + `)\s+ADD\s+CONSTRAINT\s+(?:"[^"]+"|\S+)\s+UNIQUE\s*\(([^)]+)\)`)
-var addCheckRE = regexp.MustCompile(`^ALTER\s+TABLE\s+(?:ONLY\s+)?(?:(` + identifierRE + `)\.)?(` + identifierRE + `)\s+(ADD\s+CONSTRAINT\s+(?:"[^"]+"|\S+)\s+CHECK\s*\(.*)`)
-var addFKRE = regexp.MustCompile(`^ALTER\s+TABLE\s+(?:ONLY\s+)?(?:(` + identifierRE + `)\.)?(` + identifierRE + `)\s+(ADD\s+CONSTRAINT\s+(?:"[^"]+"|\S+)\s+FOREIGN\s+KEY\s*\(.*)`)
+var addPKRE = regexp.MustCompile(`(?i)^ALTER\s+TABLE\s+(?:ONLY\s+)?(?:(` + identifierRE + `)\.)?(` + identifierRE + `)\s+ADD\s+(?:CONSTRAINT\s+(?:"[^"]+"|\S+)\s+)?PRIMARY\s+KEY\s*\(([^)]+)\)`)
+var addUniqueRE = regexp.MustCompile(`(?i)^ALTER\s+TABLE\s+(?:ONLY\s+)?(?:(` + identifierRE + `)\.)?(` + identifierRE + `)\s+ADD\s+(?:CONSTRAINT\s+(?:"[^"]+"|\S+)\s+)?UNIQUE\s*\(([^)]+)\)`)
+var addCheckRE = regexp.MustCompile(`(?i)^ALTER\s+TABLE\s+(?:ONLY\s+)?(?:(` + identifierRE + `)\.)?(` + identifierRE + `)\s+ADD\s+(?:CONSTRAINT\s+(?:"[^"]+"|\S+)\s+)?(CHECK\s*\(.*)`)
+var addFKRE = regexp.MustCompile(`(?i)^ALTER\s+TABLE\s+(?:ONLY\s+)?(?:(` + identifierRE + `)\.)?(` + identifierRE + `)\s+ADD\s+(?:CONSTRAINT\s+(?:"[^"]+"|\S+)\s+)?(FOREIGN\s+KEY\s*\(.*)`)
 
 // FK details regex - captures column, reference, and actions
-var fkDetailsRE = regexp.MustCompile(`FOREIGN\s+KEY\s*\(([^)]+)\)\s*REFERENCES\s+(` + identifierRE + `)(?:\.(` + identifierRE + `))?\s*\(([^)]+)\)(\s+ON\s+DELETE\s+(NO\s+ACTION|RESTRICT|CASCADE|SET\s+NULL|SET\s+DEFAULT))?(\s+ON\s+UPDATE\s+(NO\s+ACTION|RESTRICT|CASCADE|SET\s+NULL|SET\s+DEFAULT))?(\s+MATCH\s+(FULL|PARTIAL))?`)
-var addColumnRE = regexp.MustCompile(`^ALTER\s+TABLE\s+(?:ONLY\s+)?(?:(` + identifierRE + `)\.)?(` + identifierRE + `)\s+ADD\s+(?:COLUMN\s+)?(?:IF\s+NOT\s+EXISTS\s+)?(` + identifierRE + `)\s+(.*)`)
-var dropDefaultRE = regexp.MustCompile(`^ALTER\s+TABLE\s+(?:ONLY\s+)?(?:(` + identifierRE + `)\.)?(` + identifierRE + `)\s+ALTER\s+COLUMN\s+(` + identifierRE + `)\s+DROP\s+DEFAULT\b`)
-var dropNotNullRE = regexp.MustCompile(`^ALTER\s+TABLE\s+(?:ONLY\s+)?(?:(` + identifierRE + `)\.)?(` + identifierRE + `)\s+ALTER\s+COLUMN\s+(` + identifierRE + `)\s+DROP\s+NOT\s+NULL\b`)
-var alterNextvalRE = regexp.MustCompile(`nextval\('([^']+)'`)
-var addConstraintRE = regexp.MustCompile(`^ADD\s+`)
-var addExcludeRE = regexp.MustCompile(`^ALTER\s+TABLE\s+(?:ONLY\s+)?(?:(` + identifierRE + `)\.)?(` + identifierRE + `)\s+ADD\s+CONSTRAINT\s+(\S+)\s+EXCLUDE\s+(.+)`)
+var fkDetailsRE = regexp.MustCompile(`(?i)FOREIGN\s+KEY\s*\(([^)]+)\)\s*REFERENCES\s+(` + identifierRE + `)(?:\.(` + identifierRE + `))?\s*\(([^)]+)\)(\s+ON\s+DELETE\s+(NO\s+ACTION|RESTRICT|CASCADE|SET\s+NULL|SET\s+DEFAULT))?(\s+ON\s+UPDATE\s+(NO\s+ACTION|RESTRICT|CASCADE|SET\s+NULL|SET\s+DEFAULT))?(\s+MATCH\s+(FULL|PARTIAL))?(\s+NOT\s+VALID)?`)
+var addColumnRE = regexp.MustCompile(`(?i)^ALTER\s+TABLE\s+(?:ONLY\s+)?(?:(` + identifierRE + `)\.)?(` + identifierRE + `)\s+ADD\s+(?:COLUMN\s+)?(?:IF\s+NOT\s+EXISTS\s+)?(` + identifierRE + `)\s+(.*)`)
+var dropDefaultRE = regexp.MustCompile(`(?i)^ALTER\s+TABLE\s+(?:ONLY\s+)?(?:(` + identifierRE + `)\.)?(` + identifierRE + `)\s+ALTER\s+COLUMN\s+(` + identifierRE + `)\s+DROP\s+DEFAULT\b`)
+var dropNotNullRE = regexp.MustCompile(`(?i)^ALTER\s+TABLE\s+(?:ONLY\s+)?(?:(` + identifierRE + `)\.)?(` + identifierRE + `)\s+ALTER\s+COLUMN\s+(` + identifierRE + `)\s+DROP\s+NOT\s+NULL\b`)
+var alterNextvalRE = regexp.MustCompile(`(?i)nextval\('([^']+)'`)
+var addConstraintRE = regexp.MustCompile(`(?i)^ADD\s+`)
+var addExcludeRE = regexp.MustCompile(`(?i)^ALTER\s+TABLE\s+(?:ONLY\s+)?(?:(` + identifierRE + `)\.)?(` + identifierRE + `)\s+ADD\s+CONSTRAINT\s+(\S+)\s+EXCLUDE\s+(.+)`)
 
 func FindTable(tables map[string]*model.TableDef, schema, name string) *model.TableDef {
 	key := ""
@@ -91,11 +91,12 @@ func handleSetDefault(stmt string, tables map[string]*model.TableDef) AlterResul
 						seqMatch := alterNextvalRE.FindStringSubmatch(def)
 						if seqMatch != nil {
 							c.SequenceName = seqMatch[1]
-							// Only convert to SERIAL for bigint or integer (not smallint)
+							// Convert to SERIAL for bigint, integer, or smallint
 							rawDefLower := strings.ToLower(c.RawDef)
-							if strings.Contains(rawDefLower, "bigint") && !strings.Contains(rawDefLower, "smallint") {
-								c.IsSerial = true
-							} else if strings.Contains(rawDefLower, "integer") || strings.EqualFold(strings.TrimSpace(c.RawDef), "int") {
+							if strings.Contains(rawDefLower, "bigint") ||
+								strings.Contains(rawDefLower, "smallint") ||
+								strings.Contains(rawDefLower, "integer") ||
+								strings.EqualFold(strings.TrimSpace(c.RawDef), "int") {
 								c.IsSerial = true
 							}
 						}
@@ -154,12 +155,23 @@ func handleSetType(stmt string, tables map[string]*model.TableDef) AlterResult {
 }
 
 // handleDropDefault processes "ALTER TABLE ... ALTER COLUMN ... DROP DEFAULT" statements.
-// These are simply discarded as they don't affect the output schema.
 // Returns:
-//   - AlterHandled: the statement was matched and discarded
+//   - AlterHandled: the statement was matched and processed successfully
 //   - AlterNotMatched: the statement did not match this handler
 func handleDropDefault(stmt string, tables map[string]*model.TableDef) AlterResult {
-	if dropDefaultRE.MatchString(stmt) {
+	if m := dropDefaultRE.FindStringSubmatch(stmt); m != nil {
+		schema, tname, col := m[1], m[2], m[3]
+		td := FindTable(tables, schema, tname)
+		if td != nil {
+			for _, c := range td.Columns {
+				if strings.EqualFold(c.Name, col) {
+					c.Default = ""
+					c.SequenceName = ""
+					c.IsSerial = false
+					break
+				}
+			}
+		}
 		return AlterHandled
 	}
 	return AlterNotMatched
@@ -272,7 +284,6 @@ func handleAddCheck(stmt string, tables map[string]*model.TableDef) AlterResult 
 		schema, tname, constraint := m[1], m[2], m[3]
 		td := FindTable(tables, schema, tname)
 		if td != nil {
-			constraint = addConstraintRE.ReplaceAllString(constraint, "")
 			td.TableConstraints = append(td.TableConstraints, strings.TrimSuffix(constraint, ";"))
 		}
 		return AlterHandled
@@ -290,7 +301,7 @@ func handleAddFK(stmt string, tables map[string]*model.TableDef) AlterResult {
 		// Don't fold DEFERRABLE constraints - they have different semantics
 		// NOT DEFERRABLE can fold (same as default)
 		upperStmt := strings.ToUpper(stmt)
-		if strings.Contains(upperStmt, "DEFERRABLE") && !strings.Contains(upperStmt, "NOT DEFERRABLE") {
+		if strings.Contains(upperStmt, " DEFERRABLE") && !strings.Contains(upperStmt, "NOT DEFERRABLE") {
 			return AlterNotMatched
 		}
 
@@ -310,6 +321,13 @@ func handleAddFK(stmt string, tables map[string]*model.TableDef) AlterResult {
 				onDelete := strings.TrimSpace(fkMatch[5])
 				onUpdate := strings.TrimSpace(fkMatch[7])
 				match := strings.TrimSpace(fkMatch[9])
+				notValid := strings.TrimSpace(fkMatch[11])
+
+				// If it's NOT VALID, we can't inline it as a column-level FK easily
+				// since column-level syntax doesn't support NOT VALID in PG.
+				if notValid != "" {
+					return AlterPassThrough
+				}
 
 				if refTable == "" {
 					refTable = refSchema

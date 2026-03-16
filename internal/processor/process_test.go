@@ -207,7 +207,7 @@ func TestBuildImplicitIndexMap(t *testing.T) {
 	assert.True(t, result["public.users.id"])
 	assert.True(t, result["public.users.email"])
 	assert.False(t, result["public.users.name"])
-	assert.True(t, result["app.orders.id"])
-	assert.True(t, result["app.orders.user_id"])
+	assert.False(t, result["app.orders.id"])      // Part of multi-column PK
+	assert.False(t, result["app.orders.user_id"]) // Part of multi-column PK
 	assert.True(t, result["app.orders.order_number"])
 }

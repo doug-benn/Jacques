@@ -105,7 +105,7 @@ CREATE TABLE products (
     meta_description text,
     created_at timestamp without time zone NOT NULL DEFAULT NOW(),
     updated_at timestamp without time zone NOT NULL DEFAULT NOW(),
-    CONSTRAINT products_price_positive CHECK (price >= 0)
+    CHECK (price >= 0)
 );
 
 CREATE TABLE product_variants (
@@ -142,7 +142,7 @@ CREATE TABLE inventory (
     quantity integer NOT NULL DEFAULT 0,
     reserved_quantity integer NOT NULL DEFAULT 0,
     updated_at timestamp without time zone NOT NULL DEFAULT NOW(),
-    CONSTRAINT inventory_quantity_positive CHECK (quantity >= 0)
+    CHECK (quantity >= 0)
 );
 
 CREATE TABLE suppliers (
@@ -193,7 +193,7 @@ CREATE TABLE orders (
     cancelled_at timestamp without time zone,
     created_at timestamp without time zone NOT NULL DEFAULT NOW(),
     updated_at timestamp without time zone NOT NULL DEFAULT NOW(),
-    CONSTRAINT orders_total_positive CHECK (total_amount >= 0)
+    CHECK (total_amount >= 0)
 );
 
 CREATE TABLE order_items (
@@ -209,7 +209,7 @@ CREATE TABLE order_items (
     tax_amount numeric(10,2) NOT NULL DEFAULT 0,
     total_amount numeric(10,2) NOT NULL,
     created_at timestamp without time zone NOT NULL DEFAULT NOW(),
-    CONSTRAINT order_items_quantity_positive CHECK (quantity > 0)
+    CHECK (quantity > 0)
 );
 
 CREATE TABLE payments (
@@ -444,21 +444,13 @@ CREATE TRIGGER update_posts_updated_at
 
 CREATE INDEX idx_users_organization_id ON users(organization_id);
 
-CREATE INDEX idx_users_email ON users(email);
-
 CREATE INDEX idx_users_status ON users(status);
 
 CREATE INDEX idx_sessions_user_id ON sessions(user_id);
 
-CREATE INDEX idx_sessions_token ON sessions(token);
-
 CREATE INDEX idx_sessions_expires_at ON sessions(expires_at);
 
 CREATE INDEX idx_products_category_id ON products(category_id);
-
-CREATE INDEX idx_products_sku ON products(sku);
-
-CREATE INDEX idx_products_slug ON products(slug);
 
 CREATE INDEX idx_products_is_active ON products(is_active);
 
@@ -483,8 +475,6 @@ CREATE INDEX idx_payments_order_id ON payments(order_id);
 CREATE INDEX idx_payments_status ON payments(status);
 
 CREATE INDEX idx_posts_author_id ON posts(author_id);
-
-CREATE INDEX idx_posts_slug ON posts(slug);
 
 CREATE INDEX idx_posts_status ON posts(status);
 

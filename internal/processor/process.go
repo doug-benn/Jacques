@@ -1,6 +1,7 @@
 package processor
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 
@@ -8,6 +9,8 @@ import (
 	"github.com/doug-benn/Jacques/internal/model"
 	"github.com/doug-benn/Jacques/internal/parser"
 )
+
+var onlyKeywordRE = regexp.MustCompile(`(?i)\bONLY\b\s*`) //TODO: Move/fix
 
 // StatementType represents the type of SQL statement being processed.
 // This is used to categorize statements during the processing pipeline.
@@ -45,9 +48,20 @@ var createTypeDomainSchemaRE = regexp.MustCompile(`(?m)^CREATE (TYPE|DOMAIN|SCHE
 var createDomainWithCheckRE = regexp.MustCompile(`(?i)^CREATE\s+DOMAIN[\s\S]*?CHECK`)
 var createCompositeTypeRE = regexp.MustCompile(`(?m)^CREATE\s+TYPE\s+.*\s+AS\s+\(`)
 var partitionOfRE = regexp.MustCompile(`(?i)^CREATE\s+TABLE\s+.*\s+PARTITION\s+OF\s+`)
-var blockCommentRE = regexp.MustCompile(`(?s)/\*.*?\*/`)
 var dropRE = regexp.MustCompile(`(?i)^DROP\s+(TABLE|INDEX|SEQUENCE|VIEW|MATERIALIZED\s+VIEW)\s+(IF\s+EXISTS\s+)?(\S+)`)
 var schemaRE = regexp.MustCompile(`(?i)^CREATE\s+SCHEMA\s+(?:IF\s+NOT\s+EXISTS\s+)?(` + identifierRE + `)`)
+var cacheRE = regexp.MustCompile(`(?i)\bCACHE\s+(\d+)\b`)
+
+func extractSequenceCache(stmt string) int {
+	m := cacheRE.FindStringSubmatch(stmt)
+	if m != nil {
+		var cache int
+		if _, err := fmt.Sscanf(m[1], "%d", &cache); err == nil {
+			return cache
+		}
+	}
+	return 1 // Default cache is 1
+}
 
 // detectStatementType determines the type of SQL statement.
 // It returns the StatementType based on the statement content and options.
@@ -127,14 +141,17 @@ func Process(sql string, opts *Options) string {
 	// Infer missing CREATE SCHEMA statements and append to typeStmts
 	typeStmts = append(typeStmts, inferMissingSchemas(tables, typeStmts)...)
 
-	// Count sequence usage across tables
-	usageCount := countSequenceUsage(tables, tableOrder)
+	// Extract sequences used in trigger functions
+	triggerSeqUsage := extractTriggerSequences(passThroughs)
 
-	// Apply SERIAL conversion based on usage count
-	applySerialConversion(tables, tableOrder, usageCount)
+	// Count sequence usage across tables (including trigger-based usage)
+	usageCount := countSequenceUsage(tables, tableOrder, triggerSeqUsage)
 
-	// Extract sequences to keep from pass-throughs
-	keptSequences, convertedToSerial := extractSequencesFromPassthroughs(passThroughs, usageCount, tables)
+	// Extract sequences to keep from pass-throughs and identify non-convertible ones
+	keptSequences, convertedToSerial, nonConvertible := extractSequencesFromPassthroughs(passThroughs, usageCount, tables)
+
+	// Apply SERIAL conversion based on usage count and non-convertible status
+	applySerialConversion(tables, tableOrder, usageCount, nonConvertible, triggerSeqUsage)
 
 	// Build final output
 	return buildOutput(tables, keptSequences, typeStmts, passThroughs, fkPassthroughs, tableOrder, convertedToSerial, opts)
@@ -234,14 +251,10 @@ func categorizeStatements(statements []string, opts *Options) (
 			// Check if table uses a gated type - if so, pass through unchanged
 			usesGatedType := false
 			if len(gatedTypeNames) > 0 {
-				for _, col := range strings.Split(stmt, ",") {
-					for typeName := range gatedTypeNames {
-						if strings.Contains(strings.ToUpper(col), strings.ToUpper(typeName)) {
-							usesGatedType = true
-							break
-						}
-					}
-					if usesGatedType {
+				stmtUpper := strings.ToUpper(stmt)
+				for typeName := range gatedTypeNames {
+					if strings.Contains(stmtUpper, strings.ToUpper(typeName)) {
+						usesGatedType = true
 						break
 					}
 				}
@@ -366,16 +379,106 @@ func normalizeSequenceName(name string) string {
 	return parts[len(parts)-1]
 }
 
+var (
+	triggerFunctionRE = regexp.MustCompile(`(?i)^CREATE\s+FUNCTION\s+(\S+).*RETURNS\s+trigger`)
+	nextvalRE         = regexp.MustCompile(`nextval\s*\(\s*'(?:[^']+)'(?:\s*::\s*regclass)?\s*\)`)
+	triggerTableRE    = regexp.MustCompile(`(?i)^CREATE\s+TRIGGER\s+\S+\s+(?:BEFORE|AFTER|INSTEAD\s+OF)\s+\S+\s+ON\s+(\S+)`)
+	triggerFuncRefRE  = regexp.MustCompile(`(?is)^CREATE\s+TRIGGER\s+\S+\s+(?:BEFORE|AFTER|INSTEAD\s+OF)\s+\S+\s+ON\s+\S+.*?EXECUTE\s+(?:FUNCTION|PROCEDURE)\s+(\S+)`)
+)
+
+// extractTriggerSequences extracts sequences used in trigger functions.
+// It parses CREATE FUNCTION statements with RETURNS trigger and CREATE TRIGGER statements
+// to build a mapping of sequences to the tables that use them via triggers.
+//
+// Parameters:
+//   - passThroughs: slice of pass-through statements (includes CREATE FUNCTION and CREATE TRIGGER)
+//
+// Returns:
+//   - map of normalized sequence name to set of table names that use it via triggers
+func extractTriggerSequences(passThroughs []string) map[string]map[string]bool {
+	seqToTables := make(map[string]map[string]bool)
+	funcToSeq := make(map[string]string) // function -> sequence mapping
+
+	for _, stmt := range passThroughs {
+		stripped := strings.TrimSpace(stmt)
+
+		if match := triggerFunctionRE.FindStringSubmatch(stripped); match != nil {
+			funcName := strings.Trim(match[1], "\"")
+			body := extractFunctionBody(stripped)
+			if body != "" {
+				nextvalMatches := nextvalRE.FindAllString(body, -1)
+				for _, nextvalCall := range nextvalMatches {
+					seqName := extractSequenceFromNextval(nextvalCall)
+					if seqName != "" {
+						seqName = normalizeSequenceName(seqName)
+						// Track which function uses which sequence
+						funcToSeq[funcName] = seqName
+
+						if seqToTables[seqName] == nil {
+							seqToTables[seqName] = make(map[string]bool)
+						}
+						// Don't add table yet - we don't know it until we see the TRIGGER
+					}
+				}
+			}
+		}
+
+		if match := triggerTableRE.FindStringSubmatch(stripped); match != nil {
+			tableName := strings.Trim(match[1], "\"")
+			triggerFuncMatch := triggerFuncRefRE.FindStringSubmatch(stripped)
+			if triggerFuncMatch != nil {
+				funcName := strings.Trim(strings.Trim(triggerFuncMatch[1], "\""), ";")
+				// Find which sequence this function uses
+				if seqName, ok := funcToSeq[funcName]; ok {
+					seqToTables[seqName][tableName] = true
+				}
+			}
+		}
+	}
+
+	// Clean up sequences with no tables
+	for seqName, tables := range seqToTables {
+		if len(tables) == 0 {
+			delete(seqToTables, seqName)
+		}
+	}
+
+	return seqToTables
+}
+
+func extractSequenceFromNextval(nextvalCall string) string {
+	re := regexp.MustCompile(`nextval\s*\(\s*'([^']+)'`)
+	match := re.FindStringSubmatch(nextvalCall)
+	if match != nil {
+		return match[1]
+	}
+	return ""
+}
+
+func extractFunctionBody(stmt string) string {
+	dollarMatch := regexp.MustCompile(`(?s)\$\$(.*?)\$\$`).FindStringSubmatch(stmt)
+	if dollarMatch != nil {
+		return dollarMatch[1]
+	}
+	dollarTagMatch := regexp.MustCompile(`(?s)\$(\w+)\$(.*?)\\1\$`).FindStringSubmatch(stmt)
+	if dollarTagMatch != nil {
+		return dollarTagMatch[2]
+	}
+	return ""
+}
+
 // countSequenceUsage counts how many times each sequence is used across all tables.
 // It uses tableOrder to avoid double-counting duplicate table entries.
+// It also includes sequences used in trigger functions.
 //
 // Parameters:
 //   - tables: map of table definitions
 //   - tableOrder: ordered slice of table keys
+//   - triggerSeqUsage: map of sequence name to tables that use it via triggers
 //
 // Returns:
 //   - map of normalized sequence name to usage count
-func countSequenceUsage(tables map[string]*model.TableDef, tableOrder []string) map[string]int {
+func countSequenceUsage(tables map[string]*model.TableDef, tableOrder []string, triggerSeqUsage map[string]map[string]bool) map[string]int {
 	sequenceUsageCount := make(map[string]int)
 	countedTables := make(map[*model.TableDef]bool)
 
@@ -393,18 +496,25 @@ func countSequenceUsage(tables map[string]*model.TableDef, tableOrder []string) 
 		}
 	}
 
+	for seqName, tables := range triggerSeqUsage {
+		sequenceUsageCount[seqName] += len(tables)
+	}
+
 	return sequenceUsageCount
 }
 
 // applySerialConversion sets the IsSerial flag on columns based on sequence usage count.
 // A sequence is converted to SERIAL only if it's used by exactly one column
 // and the column type is compatible (bigint, integer, or smallint).
+// It also handles sequences used in triggers.
 //
 // Parameters:
 //   - tables: map of table definitions
 //   - tableOrder: ordered slice of table keys
 //   - usageCount: map of normalized sequence name to usage count
-func applySerialConversion(tables map[string]*model.TableDef, tableOrder []string, usageCount map[string]int) {
+//   - nonConvertible: map of sequence names that cannot be converted to SERIAL
+//   - triggerSeqUsage: map of sequence names to tables that use them via triggers
+func applySerialConversion(tables map[string]*model.TableDef, tableOrder []string, usageCount map[string]int, nonConvertible map[string]bool, triggerSeqUsage map[string]map[string]bool) {
 	processedForSerial := make(map[*model.TableDef]bool)
 
 	for _, key := range tableOrder {
@@ -415,10 +525,11 @@ func applySerialConversion(tables map[string]*model.TableDef, tableOrder []strin
 		processedForSerial[td] = true
 
 		for _, col := range td.Columns {
+			// Check column-based sequence usage
 			if col.SequenceName != "" {
 				normalized := normalizeSequenceName(col.SequenceName)
-				// Only set SERIAL if count == 1 AND column type is bigint, integer, or smallint
-				if usageCount[normalized] == 1 {
+				// Only set SERIAL if count == 1 AND not in nonConvertible AND column type is bigint, integer, or smallint
+				if usageCount[normalized] == 1 && !nonConvertible[normalized] {
 					rawDefLower := strings.ToLower(col.RawDef)
 					if strings.Contains(rawDefLower, "bigint") && !strings.Contains(rawDefLower, "smallint") {
 						col.IsSerial = true
@@ -432,6 +543,29 @@ func applySerialConversion(tables map[string]*model.TableDef, tableOrder []strin
 					}
 				} else {
 					col.IsSerial = false
+				}
+			} else {
+				// Check trigger-based sequence usage
+				// For columns without explicit SequenceName, check if there's a trigger-based sequence
+				// that should be converted to SERIAL
+				for _, tableNames := range triggerSeqUsage {
+					if len(tableNames) == 1 {
+						// Find which table uses this sequence
+						for tableName := range tableNames {
+							if tableName == td.Name || tableName == td.QualifiedName() {
+								// This column should use SERIAL
+								rawDefLower := strings.ToLower(col.RawDef)
+								if strings.Contains(rawDefLower, "bigint") && !strings.Contains(rawDefLower, "smallint") {
+									col.IsSerial = true
+								} else if strings.Contains(rawDefLower, "smallint") {
+									col.IsSerial = true
+								} else if strings.Contains(rawDefLower, "integer") ||
+									strings.EqualFold(strings.TrimSpace(col.RawDef), "int") {
+									col.IsSerial = true
+								}
+							}
+						}
+					}
 				}
 			}
 		}
@@ -452,9 +586,10 @@ func applySerialConversion(tables map[string]*model.TableDef, tableOrder []strin
 // Returns:
 //   - keptSequences: slice of CREATE SEQUENCE statements to keep
 //   - convertedToSerial: map of normalized sequence names that were converted to SERIAL
-func extractSequencesFromPassthroughs(passThroughs []string, usageCount map[string]int, tables map[string]*model.TableDef) ([]string, map[string]bool) {
+func extractSequencesFromPassthroughs(passThroughs []string, usageCount map[string]int, tables map[string]*model.TableDef) ([]string, map[string]bool, map[string]bool) {
 	var keptSequences []string
 	convertedToSerial := make(map[string]bool)
+	nonConvertible := make(map[string]bool)
 
 	for _, stmt := range passThroughs {
 		stripped := strings.TrimSpace(stmt)
@@ -465,7 +600,11 @@ func extractSequencesFromPassthroughs(passThroughs []string, usageCount map[stri
 			keepSequence := false
 			usageCnt := usageCount[normalized]
 
-			if usageCnt == 0 {
+			// Check for CACHE > 1 - should never be converted
+			if cache := extractSequenceCache(stmt); cache > 1 {
+				nonConvertible[normalized] = true
+				keepSequence = true
+			} else if usageCnt == 0 {
 				keepSequence = true
 			} else if usageCnt >= 2 {
 				keepSequence = true
@@ -475,7 +614,8 @@ func extractSequencesFromPassthroughs(passThroughs []string, usageCount map[stri
 					for _, col := range td.Columns {
 						if normalizeSequenceName(col.SequenceName) == normalized {
 							rawDefLower := strings.ToLower(col.RawDef)
-							canConvertToSerial := (strings.Contains(rawDefLower, "bigint") && !strings.Contains(rawDefLower, "smallint")) ||
+							canConvertToSerial := strings.Contains(rawDefLower, "bigint") ||
+								strings.Contains(rawDefLower, "smallint") ||
 								strings.Contains(rawDefLower, "integer") ||
 								strings.EqualFold(strings.TrimSpace(col.RawDef), "int")
 							if !canConvertToSerial {
@@ -495,7 +635,7 @@ func extractSequencesFromPassthroughs(passThroughs []string, usageCount map[stri
 		}
 	}
 
-	return keptSequences, convertedToSerial
+	return keptSequences, convertedToSerial, nonConvertible
 }
 
 // buildOutput assembles the final output string from categorized components.
@@ -641,12 +781,22 @@ func buildOutput(
 		// This handles DROP, ALTER, and other statements that reference public schema
 		stmt = strings.ReplaceAll(stmt, "public.", "")
 
+		// Remove ONLY keyword from ALTER TABLE statements for consistency
+		// Only remove from ALTER TABLE (not CREATE TABLE)
+		if strings.HasPrefix(upper, "ALTER TABLE") {
+			stmt = onlyKeywordRE.ReplaceAllString(stmt, "")
+		}
+
 		output = append(output, stmt)
 	}
 
 	// Remove public. prefix from fkPassthroughs for consistency
 	for i, stmt := range fkPassthroughs {
 		fkPassthroughs[i] = strings.ReplaceAll(stmt, "public.", "")
+		// Remove ONLY keyword from ALTER TABLE statements
+		if strings.HasPrefix(strings.ToUpper(fkPassthroughs[i]), "ALTER TABLE") {
+			fkPassthroughs[i] = onlyKeywordRE.ReplaceAllString(fkPassthroughs[i], "")
+		}
 	}
 
 	output = append(output, fkPassthroughs...)
@@ -677,43 +827,135 @@ func extractAlterSequenceName(stmt string) string {
 }
 
 // preprocessSQL removes block comments and line comments from SQL
-// This prevents the parser from combining multiple statements that have comments between them
+// It is quote-aware and dollar-quote-aware to avoid stripping comments
+// from inside function bodies or string literals.
 func preprocessSQL(sql string) string {
-	// 1. Remove block comments /* ... */
-	sql = removeBlockComments(sql)
-
-	// 2. Remove line comments -- ...
-	sql = removeLineComments(sql)
-
-	return sql
-}
-
-// removeBlockComments removes block comments (/* ... */) from SQL
-func removeBlockComments(sql string) string {
-	return blockCommentRE.ReplaceAllString(sql, "")
-}
-
-// removeLineComments removes line comments (-- comment) from SQL
-// This prevents the parser from combining multiple statements that have comments between them
-func removeLineComments(sql string) string {
 	var result strings.Builder
-	lines := strings.Split(sql, "\n")
-	for _, line := range lines {
-		// Check if this line starts with a line comment
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "--") {
-			// Skip the comment line entirely
+	var i int
+	n := len(sql)
+
+	inSingleQuote := false
+	inDoubleQuote := false
+	var dollarTag string
+
+	for i < n {
+		// Handle dollar quoting
+		if !inSingleQuote && !inDoubleQuote && dollarTag == "" && sql[i] == '$' {
+			tag := parser.ExtractDollarTag(sql, i)
+			if tag != "" {
+				dollarTag = tag
+				result.WriteString(tag)
+				i += len(tag)
+				continue
+			}
+		} else if dollarTag != "" && i+len(dollarTag) <= n && sql[i:i+len(dollarTag)] == dollarTag {
+			result.WriteString(dollarTag)
+			i += len(dollarTag)
+			dollarTag = ""
 			continue
 		}
-		// Check if there's a comment in the middle of the line
-		if idx := strings.Index(line, "--"); idx >= 0 {
-			// Keep only the part before the comment
-			line = line[:idx]
+
+		if dollarTag != "" {
+			result.WriteByte(sql[i])
+			i++
+			continue
 		}
-		result.WriteString(line)
-		result.WriteString("\n")
+
+		// Handle string literals
+		if !inDoubleQuote && sql[i] == '\'' {
+			if !inSingleQuote {
+				inSingleQuote = true
+			} else {
+				// Check for escaped single quote ''
+				if i+1 < n && sql[i+1] == '\'' {
+					result.WriteString("''")
+					i += 2
+					continue
+				}
+				inSingleQuote = false
+			}
+			result.WriteByte(sql[i])
+			i++
+			continue
+		}
+
+		if inSingleQuote {
+			result.WriteByte(sql[i])
+			i++
+			continue
+		}
+
+		// Handle quoted identifiers
+		if sql[i] == '"' {
+			inDoubleQuote = !inDoubleQuote
+			result.WriteByte(sql[i])
+			i++
+			continue
+		}
+
+		if inDoubleQuote {
+			result.WriteByte(sql[i])
+			i++
+			continue
+		}
+
+		// Handle line comments
+		if i+1 < n && sql[i] == '-' && sql[i+1] == '-' {
+			// Skip until newline
+			i += 2
+			for i < n && sql[i] != '\n' {
+				i++
+			}
+			// Skip the newline to avoid leading newlines in output
+			if i < n && sql[i] == '\n' {
+				i++
+			}
+			continue
+		}
+
+		// Handle block comments
+		if i+1 < n && sql[i] == '/' && sql[i+1] == '*' {
+			// Skip until */
+			i += 2
+			depth := 1
+			for i+1 < n && depth > 0 {
+				if sql[i] == '/' && sql[i+1] == '*' {
+					depth++
+					i += 2
+				} else if sql[i] == '*' && sql[i+1] == '/' {
+					depth--
+					i += 2
+				} else {
+					i++
+				}
+			}
+			continue
+		}
+
+		// Handle ONLY keyword
+		if !inSingleQuote && !inDoubleQuote && dollarTag == "" && i+4 <= n && strings.EqualFold(sql[i:i+4], "ONLY") {
+			// Check word boundaries
+			before := i == 0 || !isAlphaNum(sql[i-1])
+			after := i+4 == n || !isAlphaNum(sql[i+4])
+			if before && after {
+				i += 4
+				// Skip trailing whitespace
+				for i < n && (sql[i] == ' ' || sql[i] == '\t') {
+					i++
+				}
+				continue
+			}
+		}
+
+		result.WriteByte(sql[i])
+		i++
 	}
+
 	return result.String()
+}
+
+func isAlphaNum(c byte) bool {
+	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_'
 }
 
 // buildImplicitIndexMap builds a map of table.columns that have implicit indexes
@@ -728,21 +970,14 @@ func buildImplicitIndexMap(tables map[string]*model.TableDef) map[string]bool {
 		}
 
 		// Check table-level PRIMARY KEY
-		if td.TableLevelPK != "" {
-			// Table-level PK with multiple columns
-			cols := strings.Split(td.TableLevelPK, ", ")
-			for _, col := range cols {
-				col = strings.TrimSpace(col)
-				implicit[tableKey+"."+col] = true
-			}
+		if td.TableLevelPK != "" && !strings.Contains(td.TableLevelPK, ",") {
+			implicit[tableKey+"."+strings.TrimSpace(td.TableLevelPK)] = true
 		}
 
 		// Check table-level UNIQUE constraints
 		for _, uniqueCols := range td.TableLevelUniques {
-			cols := strings.Split(uniqueCols, ", ")
-			for _, col := range cols {
-				col = strings.TrimSpace(col)
-				implicit[tableKey+"."+col] = true
+			if !strings.Contains(uniqueCols, ",") {
+				implicit[tableKey+"."+strings.TrimSpace(uniqueCols)] = true
 			}
 		}
 
@@ -765,7 +1000,7 @@ func buildImplicitIndexMap(tables map[string]*model.TableDef) map[string]bool {
 func normalizeIndexDef(stmt string) string {
 	// Extract table name, columns, and options to create a unique key
 	// Format: table(col1,col2)[UNIQUE][WHERE...][INCLUDE...]
-	re := regexp.MustCompile(`(?i)^CREATE\s+(UNIQUE\s+)?INDEX\s+(?:\S+\s+)?ON\s+(` + identifierRE + `)\.(` + identifierRE + `)\s*\(([^)]+)\)`)
+	re := regexp.MustCompile(`(?i)^CREATE\s+(UNIQUE\s+)?INDEX\s+(?:\S+\s+)?ON\s+(?:(` + identifierRE + `)\.)?(` + identifierRE + `)\s*\(([^)]+)\)`)
 	m := re.FindStringSubmatch(stmt)
 	if m == nil {
 		return ""
@@ -780,7 +1015,10 @@ func normalizeIndexDef(stmt string) string {
 	columnsStr = strings.ToLower(strings.ReplaceAll(columnsStr, " ", ""))
 
 	// Build key: table(col)[UNIQUE][WHERE...][INCLUDE...]
-	key := tableSchema + "." + tableName + "(" + columnsStr + ")"
+	key := tableName + "(" + columnsStr + ")"
+	if tableSchema != "" {
+		key = tableSchema + "." + key
+	}
 	if isUnique {
 		key = "UNIQUE " + key
 	}
@@ -822,7 +1060,7 @@ func isRedundantOrDuplicateIndex(stmt string, implicitIndexes map[string]bool, s
 func isRedundantIndex(stmt string, implicitIndexes map[string]bool) bool {
 	// Parse CREATE INDEX statement
 	// Format: CREATE [UNIQUE] INDEX idx_name ON table(col [, col...]) [WHERE...] [INCLUDE...]
-	re := regexp.MustCompile(`(?i)^CREATE\s+(UNIQUE\s+)?INDEX\s+(?:\S+\s+)?ON\s+(` + identifierRE + `)\.(` + identifierRE + `)\s*\(([^)]+)\)`)
+	re := regexp.MustCompile(`(?i)^CREATE\s+(UNIQUE\s+)?INDEX\s+(?:\S+\s+)?ON\s+(?:(` + identifierRE + `)\.)?(` + identifierRE + `)\s*\(([^)]+)\)`)
 	m := re.FindStringSubmatch(stmt)
 	if m == nil {
 		return false
@@ -834,7 +1072,10 @@ func isRedundantIndex(stmt string, implicitIndexes map[string]bool) bool {
 	columnsStr := m[4]
 
 	// Build table key
-	tableKey := tableSchema + "." + tableName
+	tableKey := tableName
+	if tableSchema != "" {
+		tableKey = tableSchema + "." + tableName
+	}
 
 	// Check if this is an expression index (contains parentheses in column list)
 	// Expression indexes are NOT redundant

@@ -1,22 +1,26 @@
-CREATE TABLE users (
+CREATE TABLE noise_test (
     id bigint NOT NULL,
-    email text NOT NULL,
-    name text NOT NULL,
-    created_at timestamp without time zone NOT NULL DEFAULT NOW()
+    val text
 );
 
-CREATE TABLE products (
-    id bigint NOT NULL,
-    name text NOT NULL,
-    price numeric(10,2) NOT NULL
+CREATE TABLE drop_test (
+    id bigint PRIMARY KEY
 );
 
-CREATE TABLE edge_cases (
-    id bigint NOT NULL
+CREATE TABLE string_noise (
+    val text DEFAULT 'SET timeout; -- not a comment; ONLY stay'
 );
 
-CREATE FUNCTION set_in_function() RETURNS void AS $$
+DROP TABLE IF EXISTS drop_test;
+
+DROP VIEW IF EXISTS drop_view;
+
+CREATE VIEW drop_view AS SELECT id FROM drop_test;
+
+CREATE FUNCTION func_with_noise() RETURNS void AS $$
 BEGIN
+    -- Internal comments and SET MUST be preserved
     SET statement_timeout = 3600;
+    PERFORM 1;
 END;
 $$ LANGUAGE plpgsql;

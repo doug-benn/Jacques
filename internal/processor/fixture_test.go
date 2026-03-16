@@ -50,6 +50,30 @@ func DiscoverFixtures(dir string) []FixtureInfo {
 	return fixtures
 }
 
+// DiscoverCorpus finds all .sql files in corpus directory for round-trip testing.
+// Unlike DiscoverFixtures, it doesn't require _expected.sql files.
+func DiscoverCorpus(dir string) []FixtureInfo {
+	baseDir := filepath.Join("..", "..", dir)
+	pattern := filepath.Join(baseDir, "*.sql")
+
+	matches, err := filepath.Glob(pattern)
+	if err != nil || len(matches) == 0 {
+		return nil
+	}
+
+	var corpus []FixtureInfo
+	for _, inputPath := range matches {
+		name := filepath.Base(inputPath)
+		corpus = append(corpus, FixtureInfo{
+			Name:      name,
+			Dir:       dir,
+			InputPath: inputPath,
+		})
+	}
+
+	return corpus
+}
+
 func LoadFixture(t *testing.T, dir, name string) string {
 	t.Helper()
 	path := filepath.Join("..", "..", dir, name)

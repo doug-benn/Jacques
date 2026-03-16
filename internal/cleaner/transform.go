@@ -48,7 +48,9 @@ func ParseCreateTable(stmt string) (*model.TableDef, error) {
 	}
 
 	if inheritsMatch := inheritsRE.FindString(stmt[bodyEnd:]); inheritsMatch != "" {
-		td.Inherits = strings.TrimSpace(inheritsMatch)
+		inherits := strings.TrimSpace(inheritsMatch)
+		inherits = onlyKeywordRE.ReplaceAllString(inherits, "")
+		td.Inherits = strings.TrimSpace(inherits)
 	}
 
 	if partitionMatch := partitionByRE.FindString(stmt[bodyEnd:]); partitionMatch != "" {
@@ -406,8 +408,7 @@ func renderColumn(col *model.ColumnDef) string {
 }
 
 func Transform(sql string) string {
-	result := removeOnlyKeyword(sql)
-	result = removeNotNullAfterPrimaryKey(result)
+	result := removeNotNullAfterPrimaryKey(sql)
 	return result
 }
 
@@ -528,10 +529,6 @@ func renderReferences(col *model.ColumnDef) string {
 // It returns true if there are more items to come.
 func needsTrailingComma(currentIndex, totalCount int, hasMoreAfter bool) bool {
 	return currentIndex < totalCount-1 || hasMoreAfter
-}
-
-func removeOnlyKeyword(sql string) string {
-	return onlyKeywordRE.ReplaceAllString(sql, "")
 }
 
 func removeNotNullAfterPrimaryKey(sql string) string {

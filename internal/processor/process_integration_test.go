@@ -102,98 +102,6 @@ func TestIntegration_ExtractAlterSequenceName(t *testing.T) {
 	}
 }
 
-func TestIntegration_RemoveBlockComments(t *testing.T) {
-	tests := []struct {
-		name  string
-		input string
-		want  string
-	}{
-		{
-			name:  "simple block comment",
-			input: "/* note */ x;",
-			want:  " x;",
-		},
-		{
-			name:  "multiline block comment",
-			input: "/* note\nline2 */ x;",
-			want:  " x;",
-		},
-		{
-			name:  "no block comment",
-			input: "x;",
-			want:  "x;",
-		},
-		{
-			name:  "multiple block comments",
-			input: "/* a */ x; /* b */",
-			want:  " x; ",
-		},
-		{
-			name:  "block comment in middle",
-			input: "x /* note */ y;",
-			want:  "x  y;",
-		},
-		{
-			name:  "empty string",
-			input: "",
-			want:  "",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := removeBlockComments(tt.input)
-			assert.Equal(t, tt.want, result)
-		})
-	}
-}
-
-func TestIntegration_RemoveLineComments(t *testing.T) {
-	tests := []struct {
-		name  string
-		input string
-		want  string
-	}{
-		{
-			name:  "line comment at start",
-			input: "-- note\nx;",
-			want:  "x;\n",
-		},
-		{
-			name:  "line comment at end",
-			input: "x; -- note",
-			want:  "x; \n",
-		},
-		{
-			name:  "line comment in middle",
-			input: "x; -- note\ny;",
-			want:  "x; \ny;\n",
-		},
-		{
-			name:  "no line comment",
-			input: "x;",
-			want:  "x;\n",
-		},
-		{
-			name:  "multiple line comments",
-			input: "-- a\n-- b\nx;",
-			want:  "x;\n",
-		},
-		{
-			name:  "empty string",
-			input: "",
-			want:  "\n",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := removeLineComments(tt.input)
-			assert.Equal(t, tt.want, result)
-		})
-	}
-}
-
 func TestIntegration_PreprocessSQL(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -203,32 +111,32 @@ func TestIntegration_PreprocessSQL(t *testing.T) {
 		{
 			name:  "block comment removed",
 			input: "/* note */ x;",
-			want:  " x;\n",
+			want:  " x;",
 		},
 		{
 			name:  "line comment removed",
 			input: "-- note\nx;",
-			want:  "x;\n",
+			want:  "x;",
 		},
 		{
 			name:  "mixed comments removed",
 			input: "/* block */ x; -- line",
-			want:  " x; \n",
+			want:  " x; ",
 		},
 		{
-			name:  "comment in middle of line",
-			input: "x; -- note",
-			want:  "x; \n",
+			name:  "comment inside single quotes preserved",
+			input: "SELECT '-- not a comment';",
+			want:  "SELECT '-- not a comment';",
 		},
 		{
-			name:  "multiline block comment",
-			input: "/*\nmulti\nline\n*/ x;",
-			want:  " x;\n",
+			name:  "comment inside dollar quotes preserved",
+			input: "CREATE FUNCTION foo() AS $$ -- not a comment $$;",
+			want:  "CREATE FUNCTION foo() AS $$ -- not a comment $$;",
 		},
 		{
-			name:  "empty string",
-			input: "",
-			want:  "\n",
+			name:  "nested block comments removed",
+			input: "/* outer /* inner */ outer */ x;",
+			want:  " x;",
 		},
 	}
 
@@ -446,8 +354,8 @@ func TestIntegration_InferMissingSchemas(t *testing.T) {
 			tables: map[string]*model.TableDef{
 				"\"MySchema\".foo": {Schema: "\"MySchema\"", Name: "foo"},
 			},
-			// Current implementation uses strings.ToLower on schema name, 
-			// so "MySchema" becomes "myschema", which may incorrectly 
+			// Current implementation uses strings.ToLower on schema name,
+			// so "MySchema" becomes "myschema", which may incorrectly
 			// match an unquoted schema if one existed.
 			// This test ensures we're aware of the behavior.
 			typeStmts: []string{"CREATE SCHEMA \"myschema\";"},
@@ -532,7 +440,7 @@ func TestIntegration_CountSequenceUsage(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := countSequenceUsage(tt.tables, tt.tableOrder)
+			result := countSequenceUsage(tt.tables, tt.tableOrder, make(map[string]map[string]bool))
 			assert.Equal(t, tt.want, result)
 		})
 	}
@@ -606,7 +514,7 @@ func TestIntegration_ApplySerialConversion(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			applySerialConversion(tt.tables, tt.tableOrder, tt.usageCount)
+			applySerialConversion(tt.tables, tt.tableOrder, tt.usageCount, nil, make(map[string]map[string]bool))
 			for _, td := range tt.tables {
 				for _, col := range td.Columns {
 					if col.SequenceName != "" {
@@ -677,7 +585,7 @@ func TestIntegration_ExtractSequencesFromPassthroughs(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			kept, converted := extractSequencesFromPassthroughs(tt.passThroughs, tt.usageCount, tt.tables)
+			kept, converted, _ := extractSequencesFromPassthroughs(tt.passThroughs, tt.usageCount, tt.tables)
 			assert.Equal(t, tt.wantKept, len(kept), "kept sequences")
 			assert.Equal(t, tt.wantConverted, len(converted), "converted sequences")
 		})

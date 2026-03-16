@@ -1,46 +1,43 @@
--- Test fixture for partial indexes and index options
--- Covers: CREATE INDEX with WHERE clause, INCLUDE columns, expression indexes
+-- Test fixture for index transformations
+-- Covers: Partial indexes (WHERE), Covering indexes (INCLUDE), Expression indexes, 
+--         Redundant index removal, and Duplicate index removal.
 
-CREATE TABLE public.users (
+CREATE TABLE index_test (
     id bigint NOT NULL,
-    email text NOT NULL,
-    status text NOT NULL DEFAULT 'active',
-    created_at timestamp without time zone NOT NULL DEFAULT NOW()
+    val text NOT NULL,
+    status text NOT NULL,
+    data jsonb
 );
 
-ALTER TABLE ONLY public.users
-    ADD CONSTRAINT users_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY index_test ADD CONSTRAINT index_test_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY index_test ADD CONSTRAINT index_test_val_key UNIQUE (val);
 
-ALTER TABLE ONLY public.users
-    ADD CONSTRAINT users_email_key UNIQUE (email);
+-- 1. Partial Index (should stay)
+CREATE INDEX idx_partial ON index_test(status) WHERE status = 'active';
 
--- Partial index (only index active users)
-CREATE INDEX idx_users_active ON public.users(status) WHERE status = 'active';
+-- 2. Covering Index (should stay)
+CREATE INDEX idx_include ON index_test(status) INCLUDE (data);
 
--- Regular index on email
-CREATE INDEX idx_users_email ON public.users(email);
+-- 3. Expression Index (should stay)
+CREATE INDEX idx_expr ON index_test((lower(val)));
 
--- Partial index with multiple conditions
-CREATE INDEX idx_users_pending_verified ON public.users(status, email) WHERE status IN ('pending', 'verified');
+-- 4. Redundant Index Removal (should be REMOVED)
+-- Column 'val' is already UNIQUE, so this plain index is redundant.
+CREATE INDEX idx_redundant ON index_test(val);
 
--- Index with INCLUDE columns (covering index)
-CREATE INDEX idx_users_status_include ON public.users(status) INCLUDE (email, created_at);
+-- 5. Duplicate Index Removal (should be REMOVED)
+-- Same definition as idx_expr.
+CREATE INDEX idx_duplicate ON index_test((lower(val)));
 
--- Unique index with INCLUDE
-CREATE UNIQUE INDEX idx_users_email_covering ON public.users(email) INCLUDE (status);
+-- 6. Non-redundant UNIQUE index with different properties (should stay)
+-- Even though 'val' is UNIQUE, this one has INCLUDE, making it distinct.
+CREATE UNIQUE INDEX idx_val_include ON index_test(val) INCLUDE (status);
 
--- ============================================
--- Expression indexes (indexes on expressions/functions)
--- ============================================
+-- 7. Index with DESC
+CREATE INDEX idx_desc ON index_test(val DESC);
 
--- Edge case: Index on lowercased column (case-insensitive search)
-CREATE INDEX idx_users_email_lower ON public.users((lower(email)));
+-- 8. Index with NULLS FIRST
+CREATE INDEX idx_nulls_first ON index_test(val NULLS FIRST);
 
--- Edge case: Index on expression
-CREATE INDEX idx_users_status_active ON public.users((status = 'active')) WHERE status = 'active';
-
--- Edge case: Index on function result
-CREATE INDEX idx_users_created_year ON public.users((EXTRACT(YEAR FROM created_at)));
-
--- Edge case: Index on lowercased column (duplicate test)
-CREATE INDEX idx_users_email_lower2 ON public.users((lower(email)));
+-- 9. Index with COLLATE
+CREATE INDEX idx_collate ON index_test(val COLLATE "en_US");

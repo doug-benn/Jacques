@@ -1,131 +1,59 @@
 -- Test fixture for noise removal
 -- Transformations tested:
---   - SET statements removed
---   - GRANT/REVOKE statements removed
---   - COMMENT ON statements removed
---   - OWNER TO statements removed
---   - psql metacommands removed
---   - Block comments removed
---
--- Edge cases tested:
---   - Empty SET value
---   - Multi-statement SET
---   - GRANT with multiple privileges
---   - Empty COMMENT
---   - Multiple GRANT statements
---   - GRANT/REVOKE ON FUNCTION
---   - \set and \unset variations
---   - Block comments in various positions
---
--- Negative tests (should NOT be removed):
---   - SET inside function body (part of function definition)
+--   - Administrative noise (SET, GRANT, OWNER TO)
+--   - psql metacommands (\set, \unset, \connect, \password, etc.)
+--   - ONLY keyword removal
+--   - Block and line comment removal (quote-aware)
+--   - DROP IF EXISTS addition
 
-/* Header comment for the schema */
-
+-- 1. Administrative Noise & Metacommands
 SET statement_timeout = 0;
-SET lock_timeout = 0;
-SET idle_in_transaction_session_timeout = 0;
-SET constraint_exclusion = partition;
-SET row_security = on;
+\set QUIET on
+\set EMPTY_VAR
+\restricted
+\connect mydb
+\c otherdb
+\password user
+\timing on
+\echo Hello world
+\setenv VAR value
 
-/* Table with inline block comment */
+-- 2. Comments (Header, Inline, Footer)
+/* Header block comment */
+-- Line comment
 
-CREATE TABLE public.users (
+CREATE TABLE noise_test (
     id bigint NOT NULL,
-    email text NOT NULL,
-    name text NOT NULL,
-    created_at timestamp without time zone NOT NULL DEFAULT NOW()
+    val text /* Inline comment */
 );
 
-/* Inline block comment in table definition */
+-- 3. ONLY Removal & Ownership/Grants
+ALTER TABLE ONLY noise_test OWNER TO testuser;
+GRANT ALL ON TABLE noise_test TO testuser;
+COMMENT ON TABLE noise_test IS 'A noisy table';
 
-ALTER TABLE public.users OWNER TO testuser;
+-- ALTER FUNCTION OWNER edge cases
+ALTER FUNCTION func_simple() OWNER TO postgres;
+ALTER FUNCTION func_params(param type) OWNER TO postgres;
+ALTER FUNCTION func_returns() RETURNS TABLE(id int) OWNER TO postgres;
 
-GRANT ALL ON TABLE public.users TO testuser;
-GRANT SELECT ON TABLE public.users TO readonly_user;
-GRANT INSERT, UPDATE ON TABLE public.users TO readwrite_user;
+-- 4. DROP IF EXISTS
+DROP TABLE public.drop_test;
+DROP VIEW public.drop_view;
 
-COMMENT ON TABLE public.users IS 'Application users table';
-COMMENT ON COLUMN public.users.email IS 'User email address';
-COMMENT ON COLUMN public.users.name IS 'User full name';
+-- Objects for DROP test
+CREATE TABLE drop_test (id bigint PRIMARY KEY);
+CREATE VIEW drop_view AS SELECT id FROM drop_test;
 
-/* Another table for testing */
-
-CREATE TABLE public.products (
-    id bigint NOT NULL,
-    name text NOT NULL,
-    price numeric(10,2) NOT NULL
-);
-
-/* Multiple block comments between statements */
-
-ALTER TABLE public.products OWNER TO admin;
-
-GRANT ALL ON TABLE public.products TO admin;
-GRANT SELECT ON TABLE public.products TO public;
-
-COMMENT ON TABLE public.products IS 'Product catalog';
-
--- ============================================
--- Edge cases for noise removal
--- ============================================
-
--- Edge case: Empty SET value
-SET statement_timeout = ;
-
--- Edge case: Multi-statement SET
-SET a = 1; SET b = 2;
-
-/* Block comment around edge case */
-
--- Edge case: GRANT with multiple privileges
-GRANT SELECT, INSERT, UPDATE ON public.users TO app_user;
-
--- Edge case: Multiple GRANT statements
-GRANT SELECT ON public.products TO user1;
-GRANT INSERT ON public.products TO user1;
-GRANT UPDATE ON public.products TO user1;
-
--- Edge case: Empty COMMENT
-COMMENT ON TABLE public.users IS ;
-
--- Edge case: GRANT ON FUNCTION (should be removed)
-GRANT EXECUTE ON FUNCTION public.my_function() TO app_user;
-
--- Edge case: REVOKE ON FUNCTION (should be removed)
-REVOKE EXECUTE ON FUNCTION public.my_function() FROM app_user;
-
-/* Block comment around table */
-
--- Negative test: SET inside function body (should NOT be removed - part of function)
-CREATE FUNCTION public.set_in_function() RETURNS void AS $$
+-- 5. Edge Case: Preservation inside functions/strings
+CREATE FUNCTION func_with_noise() RETURNS void AS $$
 BEGIN
+    -- Internal comments and SET MUST be preserved
     SET statement_timeout = 3600;
+    PERFORM 1;
 END;
 $$ LANGUAGE plpgsql;
 
--- ============================================
--- psql metacommands (\set, \unset)
--- ============================================
-
--- Edge case: \set command (should be removed)
-\set QUIET on
-
--- Edge case: \set with variable (should be removed)
-\set HISTSIZE 1000
-
--- Edge case: \unset command (should be removed)
-\unset QUIET
-
--- Edge case: \set with empty value (should be removed)
-\set EMPTY_VAR
-
-\restricted
-\unrestricted
-
--- Edge case: Table for edge cases
-CREATE TABLE public.edge_cases (
-    id bigint NOT NULL
+CREATE TABLE string_noise (
+    val text DEFAULT 'SET timeout; -- not a comment; ONLY stay'
 );
-
-/* Footer comment */
