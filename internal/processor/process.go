@@ -932,11 +932,30 @@ func preprocessSQL(sql string) string {
 			continue
 		}
 
+		// Handle ONLY keyword
+		if !inSingleQuote && !inDoubleQuote && dollarTag == "" && i+4 <= n && strings.EqualFold(sql[i:i+4], "ONLY") {
+			// Check word boundaries
+			before := i == 0 || !isAlphaNum(sql[i-1])
+			after := i+4 == n || !isAlphaNum(sql[i+4])
+			if before && after {
+				i += 4
+				// Skip trailing whitespace
+				for i < n && (sql[i] == ' ' || sql[i] == '\t') {
+					i++
+				}
+				continue
+			}
+		}
+
 		result.WriteByte(sql[i])
 		i++
 	}
 
 	return result.String()
+}
+
+func isAlphaNum(c byte) bool {
+	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_'
 }
 
 // buildImplicitIndexMap builds a map of table.columns that have implicit indexes

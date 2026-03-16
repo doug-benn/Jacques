@@ -112,47 +112,25 @@ func parseTableBody(body string) ([]*model.ColumnDef, []string, error) {
 
 	depth := 0
 	colStart := 0
-	inSingleQuote := false
-	inDoubleQuote := false
 
-	for i := 0; i < len(body); i++ {
-		ch := body[i]
-
-		// Handle quotes
-		if ch == '\'' && !inDoubleQuote {
-			// Check for escaped single quote ''
-			if inSingleQuote && i+1 < len(body) && body[i+1] == '\'' {
-				i++ // Skip next quote
-			} else {
-				inSingleQuote = !inSingleQuote
-			}
-			continue
-		}
-		if ch == '"' && !inSingleQuote {
-			inDoubleQuote = !inDoubleQuote
-			continue
-		}
-
-		// Only handle parentheses and commas if NOT in quotes
-		if !inSingleQuote && !inDoubleQuote {
-			if ch == '(' {
-				depth++
-			} else if ch == ')' {
-				depth--
-			} else if ch == ',' && depth == 0 {
-				segment := strings.TrimSpace(body[colStart:i])
-				if segment != "" {
-					if isColumnDef(segment) {
-						col := parseColumnDef(segment)
-						if col != nil {
-							cols = append(cols, col)
-						}
-					} else {
-						constraints = append(constraints, segment)
+	for i, ch := range body {
+		if ch == '(' {
+			depth++
+		} else if ch == ')' {
+			depth--
+		} else if ch == ',' && depth == 0 {
+			segment := strings.TrimSpace(body[colStart:i])
+			if segment != "" {
+				if isColumnDef(segment) {
+					col := parseColumnDef(segment)
+					if col != nil {
+						cols = append(cols, col)
 					}
+				} else {
+					constraints = append(constraints, segment)
 				}
-				colStart = i + 1
 			}
+			colStart = i + 1
 		}
 	}
 
