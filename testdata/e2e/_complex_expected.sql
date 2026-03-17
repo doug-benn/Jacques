@@ -510,9 +510,3 @@ CREATE POLICY user_profiles_user_policy ON user_profiles
 
 CREATE POLICY orders_user_policy ON orders
     USING (user_id = current_setting('app.current_user_id', true)::bigint);
-
-ALTER TABLE categories ADD CONSTRAINT categories_parent_fkey FOREIGN KEY (parent_id) REFERENCES categories(id);
-
-ALTER TABLE departments ADD CONSTRAINT departments_parent_fkey FOREIGN KEY (parent_id) REFERENCES departments(id);
-
-ALTER TABLE comments ADD CONSTRAINT comments_parent_fkey FOREIGN KEY (parent_id) REFERENCES comments(id);

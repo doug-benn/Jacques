@@ -396,7 +396,7 @@ func renderColumn(col *model.ColumnDef) string {
 
 	// Only add REFERENCES if not already in rawDef
 	// Use rawDef (modified) not col.RawDef to check
-	if col.References != "" && !col.IsPrimaryKey && !strings.Contains(strings.ToUpper(rawDef), "REFERENCES") {
+	if col.References != "" && !strings.Contains(strings.ToUpper(rawDef), "REFERENCES") {
 		sb.WriteString(renderReferences(col))
 		// Only add NOT NULL if it was in the original and we removed it due to references
 		if hadReferences && strings.Contains(strings.ToUpper(col.RawDef), "NOT NULL") && !strings.Contains(strings.ToUpper(rawDef), "NOT NULL") {

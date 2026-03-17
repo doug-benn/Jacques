@@ -87,3 +87,18 @@ CREATE TABLE child_table (
 CREATE TABLE only_child (
     val text
 ) INHERITS (ONLY parent_table);
+
+-- ============================================
+-- 5. Regression Tests
+-- ============================================
+
+-- NOT VALID self-referential FK should pass through, not be folded
+CREATE TABLE info (
+    id bigint PRIMARY KEY,
+    source bigint,
+    destination bigint
+);
+ALTER TABLE info ADD CONSTRAINT "self ref for source" FOREIGN KEY (source) REFERENCES info(id) NOT VALID;
+
+ALTER TABLE info ADD CONSTRAINT "self ref for destination" FOREIGN KEY (destination) REFERENCES info(id);
+

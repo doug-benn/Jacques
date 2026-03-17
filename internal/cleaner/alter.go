@@ -362,12 +362,7 @@ func handleAddFK(stmt string, tables map[string]*model.TableDef) AlterResult {
 						if match != "" {
 							c.Match = match
 						}
-						// For self-referential FKs (same table), also pass through
-						// For normal FKs, just inline (no need for duplicate constraint)
-						if strings.EqualFold(tname, refTable) {
-							return AlterPassThrough // Self-referential - pass through
-						}
-						// Non-self-referential - just inline, don't pass through
+						// Non-NOT VALID constraints (including self-refs) can just inline
 						return AlterHandled
 					}
 				}

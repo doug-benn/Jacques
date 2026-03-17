@@ -24,7 +24,7 @@ CREATE TABLE fk_parent (
 );
 
 CREATE TABLE fk_child (
-    id bigint PRIMARY KEY,
+    id bigint PRIMARY KEY REFERENCES fk_child(id),
     parent_id bigint REFERENCES fk_parent(id),
     col_cascade bigint REFERENCES fk_parent(id) ON DELETE CASCADE NOT NULL,
     col_match_full bigint REFERENCES fk_parent(id) MATCH FULL,
@@ -45,4 +45,10 @@ CREATE TABLE only_child (
     val text
 ) INHERITS (parent_table);
 
-ALTER TABLE fk_child ADD CONSTRAINT self_fkey FOREIGN KEY (id) REFERENCES fk_child(id);
+CREATE TABLE info (
+    id bigint PRIMARY KEY,
+    source bigint,
+    destination bigint REFERENCES info(id)
+);
+
+ALTER TABLE info ADD CONSTRAINT "self ref for source" FOREIGN KEY (source) REFERENCES info(id) NOT VALID;
